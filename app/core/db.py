@@ -90,6 +90,29 @@ CREATE TABLE IF NOT EXISTS user_settings (
     value_json TEXT NOT NULL,
     FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
 );
+
+CREATE TABLE IF NOT EXISTS conversations (
+    id         INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id    INTEGER NOT NULL,
+    base_id    TEXT NOT NULL,
+    title      TEXT,
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL,
+    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+);
+CREATE INDEX IF NOT EXISTS idx_conv_user ON conversations(user_id, base_id);
+
+CREATE TABLE IF NOT EXISTS messages (
+    id              INTEGER PRIMARY KEY AUTOINCREMENT,
+    conversation_id INTEGER NOT NULL,
+    role            TEXT NOT NULL,              -- user|assistant
+    content         TEXT NOT NULL,
+    sources_json    TEXT,
+    diagnostics_json TEXT,
+    created_at      TEXT NOT NULL,
+    FOREIGN KEY (conversation_id) REFERENCES conversations(id) ON DELETE CASCADE
+);
+CREATE INDEX IF NOT EXISTS idx_msg_conv ON messages(conversation_id);
 """
 
 
@@ -233,5 +256,64 @@ def list_audit(limit: int = 200) -> list[dict[str, Any]]:
     with get_conn() as conn:
         rows = conn.execute(
             "SELECT * FROM audit_log ORDER BY id DESC LIMIT ?", (limit,)
+        ).fetchall()
+        return [dict(r) for r in rows]
+
+
+# --------------------------------------------------------------------------
+# Conversations & messages
+# --------------------------------------------------------------------------
+def create_conversation(user_id: int, base_id: str, title: str) -> int:
+    ts = now_iso()
+    with get_conn() as conn:
+        cur = conn.execute(
+            "INSERT INTO conversations (user_id, base_id, title, created_at, updated_at) "
+            "VALUES (?, ?, ?, ?, ?)",
+            (user_id, base_id, title[:120], ts, ts),
+        )
+        return int(cur.lastrowid)
+
+
+def get_conversation(conv_id: int) -> Optional[dict[str, Any]]:
+    with get_conn() as conn:
+        row = conn.execute("SELECT * FROM conversations WHERE id = ?", (conv_id,)).fetchone()
+        return dict(row) if row else None
+
+
+def list_conversations(user_id: int, base_id: Optional[str] = None) -> list[dict[str, Any]]:
+    with get_conn() as conn:
+        if base_id:
+            rows = conn.execute(
+                "SELECT * FROM conversations WHERE user_id = ? AND base_id = ? "
+                "ORDER BY updated_at DESC", (user_id, base_id)).fetchall()
+        else:
+            rows = conn.execute(
+                "SELECT * FROM conversations WHERE user_id = ? ORDER BY updated_at DESC",
+                (user_id,)).fetchall()
+        return [dict(r) for r in rows]
+
+
+def touch_conversation(conv_id: int) -> None:
+    with get_conn() as conn:
+        conn.execute("UPDATE conversations SET updated_at = ? WHERE id = ?",
+                     (now_iso(), conv_id))
+
+
+def add_message(conversation_id: int, role: str, content: str,
+                sources_json: Optional[str] = None,
+                diagnostics_json: Optional[str] = None) -> int:
+    with get_conn() as conn:
+        cur = conn.execute(
+            "INSERT INTO messages (conversation_id, role, content, sources_json, "
+            "diagnostics_json, created_at) VALUES (?, ?, ?, ?, ?, ?)",
+            (conversation_id, role, content, sources_json, diagnostics_json, now_iso()),
+        )
+        return int(cur.lastrowid)
+
+
+def list_messages(conversation_id: int) -> list[dict[str, Any]]:
+    with get_conn() as conn:
+        rows = conn.execute(
+            "SELECT * FROM messages WHERE conversation_id = ? ORDER BY id", (conversation_id,)
         ).fetchall()
         return [dict(r) for r in rows]

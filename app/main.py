@@ -7,17 +7,19 @@ Briques actives :
 """
 from __future__ import annotations
 
+import json
 import secrets
 from typing import Optional
 
 import httpx
 from fastapi import FastAPI, Form, Request
-from fastapi.responses import JSONResponse, RedirectResponse
+from fastapi.responses import JSONResponse, RedirectResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 
-from core import auth, db
+from core import auth, bases, db, rag
 from core.config import settings
+from core.retrieval import SearchParams
 from core.security import (
     CSP_POLICY,
     client_ip,
@@ -91,7 +93,119 @@ async def home(request: Request):
         return RedirectResponse("/login", status_code=303)
     if user["must_change_password"]:
         return RedirectResponse("/change-password", status_code=303)
-    return _render_with_csrf(request, "base.html", {"title": "EDGAR v2", "user": user})
+    return RedirectResponse("/chat", status_code=303)
+
+
+# --------------------------------------------------------------------------
+# Chat (interface + streaming SSE)
+# --------------------------------------------------------------------------
+_PARAM_FIELDS = ("mode", "use_reprompt", "n_reformulations", "use_rerank",
+                 "top_k", "k_candidates", "threshold", "search_mode", "llm_model")
+
+
+def _params_from(overrides: dict) -> SearchParams:
+    """Construit les paramètres de recherche depuis les défauts + surcharges UI."""
+    p = SearchParams()
+    for k in _PARAM_FIELDS:
+        if overrides.get(k) is not None:
+            setattr(p, k, overrides[k])
+    return p
+
+
+@app.get("/chat")
+async def chat_page(request: Request, base: Optional[str] = None, conv: Optional[int] = None):
+    user = auth.current_user(request)
+    if not user:
+        return RedirectResponse("/login", status_code=303)
+    if user["must_change_password"]:
+        return RedirectResponse("/change-password", status_code=303)
+
+    all_bases = bases.load_bases()
+    base_id = base or (all_bases[0]["id"] if all_bases else None)
+    convs = db.list_conversations(user["id"], base_id) if base_id else []
+
+    messages = []
+    if conv is not None:
+        c = db.get_conversation(conv)
+        if c and c["user_id"] == user["id"]:
+            for m in db.list_messages(conv):
+                m["sources"] = json.loads(m["sources_json"]) if m.get("sources_json") else []
+                m["diagnostics"] = json.loads(m["diagnostics_json"]) if m.get("diagnostics_json") else None
+                messages.append(m)
+        else:
+            conv = None
+
+    return _render_with_csrf(request, "chat.html", {
+        "title": "EDGAR v2", "user": user, "bases": all_bases,
+        "base_id": base_id, "conversations": convs, "conv_id": conv,
+        "messages": messages,
+    })
+
+
+def _sse(event: str, data: dict) -> str:
+    return f"event: {event}\ndata: {json.dumps(data, ensure_ascii=False)}\n\n"
+
+
+@app.post("/api/chat/stream")
+async def chat_stream(request: Request):
+    user = auth.current_user(request)
+    if not user:
+        return JSONResponse({"error": "non authentifié"}, status_code=401)
+
+    body = await request.json()
+    if not _check_csrf(request, body.get("csrf_token")):
+        return JSONResponse({"error": "CSRF invalide"}, status_code=403)
+
+    base_id = body.get("base_id")
+    question = (body.get("question") or "").strip()
+    if not base_id or not bases.get_base(base_id):
+        return JSONResponse({"error": "base inconnue"}, status_code=404)
+    if not question:
+        return JSONResponse({"error": "question vide"}, status_code=400)
+
+    # Conversation : création si absente, vérification d'appartenance sinon.
+    conv_id = body.get("conversation_id")
+    if conv_id:
+        c = db.get_conversation(int(conv_id))
+        if not c or c["user_id"] != user["id"]:
+            return JSONResponse({"error": "conversation introuvable"}, status_code=404)
+        conv_id = int(conv_id)
+    else:
+        conv_id = db.create_conversation(user["id"], base_id, title=question)
+
+    params = _params_from(body.get("params") or {})
+    db.add_message(conv_id, "user", question)
+    prep = rag.prepare(base_id, question, params)
+
+    def event_stream():
+        yield _sse("meta", {
+            "conversation_id": conv_id, "found": prep["found"],
+            "search_mode": prep["search_mode"], "sources": prep["sources"],
+            "diagnostics": prep["diagnostics"],
+        })
+        parts: list[str] = []
+        try:
+            if not prep["found"]:
+                parts.append(rag.NOT_FOUND_MESSAGE)
+                yield _sse("token", {"t": rag.NOT_FOUND_MESSAGE})
+            elif not prep["search_mode"]:
+                for tok in rag.generate_answer(prep["prompt"], model=params.llm_model):
+                    parts.append(tok)
+                    yield _sse("token", {"t": tok})
+        except Exception as exc:  # robustesse : on signale sans planter le flux
+            yield _sse("error", {"message": f"Erreur de génération ({type(exc).__name__})."})
+
+        content = "".join(parts)
+        mid = db.add_message(
+            conv_id, "assistant", content,
+            sources_json=json.dumps(prep["sources"], ensure_ascii=False),
+            diagnostics_json=json.dumps(prep["diagnostics"], ensure_ascii=False),
+        )
+        db.touch_conversation(conv_id)
+        yield _sse("done", {"message_id": mid, "conversation_id": conv_id})
+
+    return StreamingResponse(event_stream(), media_type="text/event-stream",
+                             headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"})
 
 
 # --------------------------------------------------------------------------

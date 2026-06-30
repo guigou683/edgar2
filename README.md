@@ -65,7 +65,11 @@ Le changement de mot de passe est **forcé** à la première connexion.
       requête, fusion inter-requêtes RRF, reranking bge-reranker-v2-m3 (CPU,
       bundlé), seuil de pertinence (refus d'inventer), leviers + diagnostic.
       Testé en conteneur (13 assertions).
-- [ ] 6. Génération streaming + UI chat (sources, diagnostic).
+- [x] **6. Génération streaming + UI chat** — `rag.py` (contexte numéroté,
+      prompt système FR + citations [n], refus d'inventer), endpoint SSE,
+      interface chat (bulles, Markdown assaini, coloration code, bloc Sources
+      dépliable, diagnostic), assets front vendus localement, corpus de démo.
+      Streaming validé de bout en bout.
 - [ ] 7. Panneau d'expérimentation (toggles/sliders).
 - [ ] 8. Administration (bases, comptes, modèles, système, journaux).
 - [ ] 9. Chaîne d'export hors-ligne + vérification `--network none`.

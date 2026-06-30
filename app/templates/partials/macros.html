@@ -1,0 +1,36 @@
+{% macro render_sources(sources) %}
+{% if sources %}
+<div class="sources">
+  <div class="sources-title">Sources</div>
+  {% for s in sources %}
+  <details class="source">
+    <summary>
+      <span class="src-n">[{{ s.n }}]</span>
+      <span class="src-file">{{ s.file }}</span>
+      {% if s.page %}<span class="src-meta">· p.{{ s.page }}</span>{% endif %}
+      {% if s.section %}<span class="src-meta">· {{ s.section }}</span>{% endif %}
+      {% if s.score is not none %}<span class="src-score">{{ (s.score * 100) | round }} %</span>{% endif %}
+    </summary>
+    <div class="source-cite">{{ s.text }}</div>
+  </details>
+  {% endfor %}
+</div>
+{% endif %}
+{% endmacro %}
+
+{% macro render_diagnostics(diag) %}
+{% if diag %}
+<details class="diag">
+  <summary>Diagnostic de recherche</summary>
+  <div class="diag-body">
+    {% if diag.queries %}<div><b>Variantes :</b> {{ diag.queries | join(' · ') }}</div>{% endif %}
+    {% if diag.counts %}<div><b>Candidats fusionnés :</b> {{ diag.counts.candidats_fusionnes }} —
+      <b>retenus :</b> {{ diag.counts.get('retenus', 0) }}</div>{% endif %}
+    {% if diag.scores_avant_rerank %}<div><b>Scores RRF :</b> {{ diag.scores_avant_rerank | join(', ') }}</div>{% endif %}
+    {% if diag.scores_apres_rerank %}<div><b>Après rerank :</b> {{ diag.scores_apres_rerank | join(', ') }}</div>{% endif %}
+    {% if diag.timings_ms %}<div><b>Temps (ms) :</b>
+      {% for k, v in diag.timings_ms.items() %}{{ k }}={{ v }} {% endfor %}</div>{% endif %}
+  </div>
+</details>
+{% endif %}
+{% endmacro %}

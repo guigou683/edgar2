@@ -1,0 +1,66 @@
+{% extends "base.html" %}
+{% import "partials/macros.html" as ui %}
+
+{% block sidebar %}
+<a class="btn-new" href="/chat{% if base_id %}?base={{ base_id }}{% endif %}">+ Nouvelle conversation</a>
+
+{% if bases %}
+<label class="side-label" for="base-select">Base documentaire</label>
+<select id="base-select" class="base-select" data-base-select>
+  {% for b in bases %}
+  <option value="{{ b.id }}" {% if b.id == base_id %}selected{% endif %}>{{ b.name }}</option>
+  {% endfor %}
+</select>
+{% else %}
+<p class="sidebar-note">Aucune base documentaire. Un administrateur doit en créer une.</p>
+{% endif %}
+
+<div class="conv-list">
+  {% for c in conversations %}
+  <a class="conv-item {% if c.id == conv_id %}active{% endif %}"
+     href="/chat?base={{ base_id }}&conv={{ c.id }}">{{ c.title or "Conversation" }}</a>
+  {% endfor %}
+</div>
+{% endblock %}
+
+{% block content %}
+<div class="chat"
+     data-base-id="{{ base_id or '' }}"
+     data-conv-id="{{ conv_id or '' }}"
+     data-csrf="{{ csrf_token }}">
+
+  <div class="messages" data-messages>
+    {% if not messages %}
+    <div class="empty-state">
+      <h1>EDGAR&nbsp;v2</h1>
+      <p>Posez une question sur la base sélectionnée. Les réponses sont en français,
+         sourcées et vérifiables. Hors corpus, EDGAR répond « information non trouvée ».</p>
+    </div>
+    {% endif %}
+
+    {% for m in messages %}
+    {% if m.role == 'user' %}
+    <div class="msg msg-user"><div class="bubble">{{ m.content }}</div></div>
+    {% else %}
+    <div class="msg msg-assistant">
+      <div class="bubble"><div class="md-content" data-md>{{ m.content }}</div></div>
+      {{ ui.render_sources(m.sources) }}
+      {{ ui.render_diagnostics(m.diagnostics) }}
+    </div>
+    {% endif %}
+    {% endfor %}
+  </div>
+
+  <form class="composer" data-composer>
+    <div class="composer-row">
+      <textarea data-input rows="1" placeholder="Votre question…"
+                {% if not base_id %}disabled{% endif %}></textarea>
+      <button class="btn-send" type="submit" {% if not base_id %}disabled{% endif %}>Envoyer</button>
+    </div>
+    <label class="search-mode">
+      <input type="checkbox" data-search-mode>
+      Mode recherche (extraits seuls, sans génération)
+    </label>
+  </form>
+</div>
+{% endblock %}
