@@ -53,7 +53,8 @@ Le changement de mot de passe est **forcé** à la première connexion.
 - [x] **1. Socle web** — FastAPI, statics, healthcheck, en-têtes de sécurité.
 - [x] **2. Auth/sécurité** — Argon2id, sessions révocables, rôles, CSRF,
       politique MDP, anti-bruteforce, audit+IP, bootstrap admin.
-- [ ] 3. Multi-bases — registre `bases.json`, cloisonnement.
+- [x] **3. Multi-bases** — registre `bases.json`, `vectorstore.py` (collections
+      Qdrant `dense`+`sparse`, recherche hybride RRF, cloisonnement). Testé contre Qdrant réel.
 - [ ] 4. Ingestion — parsing/OCR → chunking → tagging → embeddings dense+sparse.
 - [ ] 5. Retrieval — multi-query → hybride RRF → fusion → reranking → seuil.
 - [ ] 6. Génération streaming + UI chat (sources, diagnostic).
