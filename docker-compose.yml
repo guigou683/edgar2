@@ -10,7 +10,7 @@ name: edgar2
 
 services:
   ollama:
-    image: ollama/ollama:0.5.4
+    image: ollama/ollama:0.30.9
     volumes:
       - edgar2_ollama:/root/.ollama          # modèles pré-téléchargés (volume transférable)
     ports:
@@ -53,6 +53,7 @@ services:
     volumes:
       - ./data:/app/data                       # SQLite, bases.json, settings.json
       - ./documents:/app/documents             # corpus, un sous-dossier par base
+      - ./scripts:/app/scripts:ro              # outils d'exploitation (bootstrap, etc.)
     ports:
       - "${APP_PORT:-8800}:8000"
     restart: unless-stopped

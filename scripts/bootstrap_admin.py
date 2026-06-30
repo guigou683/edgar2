@@ -19,9 +19,13 @@ import string
 import sys
 from pathlib import Path
 
-# Permet l'exécution depuis la racine du dépôt (ajoute app/ au PYTHONPATH).
-APP_DIR = Path(__file__).resolve().parent.parent / "app"
-sys.path.insert(0, str(APP_DIR))
+# Localise le dossier contenant le paquet `core`, que l'on soit lancé depuis la
+# racine du dépôt (scripts/ et app/ sont frères) ou dans le conteneur (/app).
+_here = Path(__file__).resolve().parent
+for _cand in (_here.parent / "app", _here.parent, Path("/app"), Path.cwd()):
+    if (_cand / "core").is_dir():
+        sys.path.insert(0, str(_cand))
+        break
 
 from core import auth, db  # noqa: E402
 

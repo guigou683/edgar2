@@ -20,6 +20,7 @@ Trois services Docker Compose :
 - **app** — application EDGAR (FastAPI), reranking sur CPU.
 
 Ports décalés pour cohabiter avec la v1 : app **8800**, qdrant **7333**, ollama **11435**.
+Images alignées sur la v1 (Ollama `0.30.9`, Qdrant `v1.12.4`).
 
 ## Prérequis hôte (non embarquables)
 - Docker + Docker Compose.
