@@ -1,0 +1,28 @@
+# --- Données & secrets (jamais versionnés) ---
+/data/
+/documents/
+.env
+
+# --- Assets binaires vendus localement (transférés hors-ligne, pas dans Git) ---
+app/static/vendor/*.js
+app/static/fonts/*
+app/static/icons/*
+
+# --- Python ---
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+.pytest_cache/
+
+# --- Modèles / caches offline ---
+*.gguf
+.cache/
+hf_cache/
+
+# --- OS / éditeurs ---
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/

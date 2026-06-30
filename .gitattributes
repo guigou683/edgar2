@@ -1,0 +1,5 @@
+# Normalisation des fins de ligne : LF dans le dépôt (cohérent Linux/conteneur).
+* text=auto eol=lf
+*.png binary
+*.jpg binary
+*.svg text eol=lf

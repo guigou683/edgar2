@@ -1,0 +1,57 @@
+/* =====================================================================
+   EDGAR v2 — thème sombre, identité Marine nationale (bleu marine / or).
+   Inspiration OpenWebUI : épuré, sombre, moderne. Tout en variables CSS.
+   ===================================================================== */
+:root {
+  --bg:          #0f1115;
+  --bg-elev:     #161922;
+  --sidebar:     #0b0d12;
+  --border:      #232838;
+  --text:        #e6e9f0;
+  --text-muted:  #8b93a7;
+  --marine:      #1b2a4a;   /* bleu marine */
+  --marine-acc:  #2e4a86;   /* accent */
+  --or:          #c8a85a;   /* or discret */
+  --radius:      10px;
+}
+
+* { box-sizing: border-box; }
+
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--text);
+  font-family: system-ui, "Segoe UI", Roboto, sans-serif;
+  font-size: 15px;
+  line-height: 1.55;
+}
+
+.layout { display: flex; min-height: 100vh; }
+
+/* --- Barre latérale --- */
+.sidebar {
+  width: 260px;
+  flex-shrink: 0;
+  background: var(--sidebar);
+  border-right: 1px solid var(--border);
+  padding: 18px 16px;
+}
+.brand { display: flex; align-items: center; gap: 10px; }
+.brand-logo { width: 28px; height: 28px; }
+.brand-name { font-weight: 600; letter-spacing: .5px; color: var(--text); }
+.brand-name::first-letter { color: var(--or); }
+.sidebar-note { color: var(--text-muted); font-size: 12px; margin-top: 14px; }
+
+/* --- Contenu --- */
+.content { flex: 1; padding: 40px; }
+.welcome h1 { margin: 0 0 8px; }
+.welcome h1::first-letter { color: var(--or); }
+.muted { color: var(--text-muted); }
+a { color: var(--marine-acc); }
+a:hover { color: var(--or); }
+
+/* --- Responsive : sidebar repliée sur petit écran --- */
+@media (max-width: 720px) {
+  .layout { flex-direction: column; }
+  .sidebar { width: 100%; border-right: none; border-bottom: 1px solid var(--border); }
+}

@@ -1,0 +1,62 @@
+# =====================================================================
+# EDGAR v2 — orchestration des trois services.
+#   ollama  : modèles (embeddings dense + génération), GPU si présent.
+#   qdrant  : base vectorielle (vecteurs nommés dense + sparse, RRF natif).
+#   app     : application EDGAR (FastAPI), reranking sur CPU.
+# Ports décalés (8800/7333/11435) et volumes préfixés "edgar2_" pour
+# cohabiter avec la v1 sur le même hôte.
+# =====================================================================
+name: edgar2
+
+services:
+  ollama:
+    image: ollama/ollama:0.5.4
+    volumes:
+      - edgar2_ollama:/root/.ollama          # modèles pré-téléchargés (volume transférable)
+    ports:
+      - "${OLLAMA_PORT:-11435}:11434"
+    environment:
+      - OLLAMA_NOPRUNE=1                       # ne pas purger les modèles
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia                   # GPU si pilote + NVIDIA Container Toolkit présents
+              count: all
+              capabilities: [gpu]
+    healthcheck:
+      test: ["CMD", "ollama", "list"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+    restart: unless-stopped
+
+  qdrant:
+    image: qdrant/qdrant:v1.12.4
+    volumes:
+      - edgar2_qdrant:/qdrant/storage
+    ports:
+      - "${QDRANT_PORT:-7333}:6333"
+    restart: unless-stopped
+
+  app:
+    build: ./app
+    depends_on:
+      - ollama
+      - qdrant
+    env_file: .env
+    environment:
+      - HF_HUB_OFFLINE=1
+      - TRANSFORMERS_OFFLINE=1
+      - OLLAMA_URL=http://ollama:11434
+      - QDRANT_URL=http://qdrant:6333
+    volumes:
+      - ./data:/app/data                       # SQLite, bases.json, settings.json
+      - ./documents:/app/documents             # corpus, un sous-dossier par base
+    ports:
+      - "${APP_PORT:-8800}:8000"
+    restart: unless-stopped
+
+volumes:
+  edgar2_ollama:
+  edgar2_qdrant:

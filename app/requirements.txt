@@ -1,0 +1,35 @@
+# =====================================================================
+# EDGAR v2 — dépendances Python.
+# Brique 1 (socle web) : stack FastAPI + client HTTP.
+# Les briques suivantes ajouteront leurs dépendances (commentées ci-dessous),
+# pour garder l'image légère et le build incrémental.
+# =====================================================================
+
+# --- Socle web (brique 1) ---
+fastapi==0.115.6
+uvicorn[standard]==0.32.1
+jinja2==3.1.4
+python-multipart==0.0.12
+itsdangerous==2.2.0
+httpx==0.27.2
+
+# --- Sécurité / Auth (brique : auth) ---
+# argon2-cffi==23.1.0
+
+# --- Vectorstore & recherche hybride (brique : indexation/retrieval) ---
+# qdrant-client==1.12.1
+# fastembed==0.4.2
+
+# --- Parsing & OCR (brique : ingestion) ---
+# unstructured[pdf,docx,pptx,xlsx]==0.16.11
+# pytesseract==0.3.13
+
+# --- Mots-clés (brique : tagging) ---
+# yake==0.4.8
+
+# --- Reranking CPU (brique : reranking) ---
+# sentence-transformers==3.3.1
+
+# --- Rendu Markdown serveur (repli non-JS) ---
+# markdown-it-py==3.0.0
+# pygments==2.18.0

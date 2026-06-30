@@ -1,0 +1,37 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{{ title | default("EDGAR v2") }}</title>
+  <link rel="stylesheet" href="/static/css/edgar.css">
+  <!-- HTMX vendu localement (aucun CDN). Présent dès qu'il sera déposé dans static/vendor/. -->
+  <script src="/static/vendor/htmx.min.js" defer></script>
+</head>
+<body>
+  <div class="layout">
+    <!-- Barre latérale (sera enrichie : nouvelle conversation, bases, compte, admin) -->
+    <aside class="sidebar">
+      <div class="brand">
+        <img src="/static/img/logo-marine.svg" alt="Marine nationale" class="brand-logo"
+             onerror="this.style.display='none'">
+        <span class="brand-name">EDGAR&nbsp;v2</span>
+      </div>
+      <p class="sidebar-note">Exploration de Documentation Guidée par Agent de Raisonnement</p>
+    </aside>
+
+    <!-- Zone principale -->
+    <main class="content">
+      {% block content %}
+      <section class="welcome">
+        <h1>EDGAR&nbsp;v2</h1>
+        <p>Socle opérationnel. Recherche hybride, re-prompt multi-requêtes,
+           tagging et interface de chat arrivent par briques successives.</p>
+        <p class="muted">État du système :
+          <a href="/healthz">/healthz</a></p>
+      </section>
+      {% endblock %}
+    </main>
+  </div>
+</body>
+</html>
