@@ -1,0 +1,21 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="auth-wrap">
+  <form class="auth-card" method="post" action="/login" autocomplete="off">
+    <h1 class="auth-title">Connexion</h1>
+
+    {% if error %}<p class="alert alert-error">{{ error }}</p>{% endif %}
+
+    <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+    <label>Nom d'utilisateur
+      <input type="text" name="username" required autofocus>
+    </label>
+    <label>Mot de passe
+      <input type="password" name="password" required>
+    </label>
+    <button class="btn-primary" type="submit">Se connecter</button>
+
+    <p class="auth-foot">Pas de compte ? <a href="/register">Demander un accès</a></p>
+  </form>
+</div>
+{% endblock %}

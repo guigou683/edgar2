@@ -1,0 +1,31 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="auth-wrap">
+  <form class="auth-card" method="post" action="/register" autocomplete="off">
+    <h1 class="auth-title">Demander un accès</h1>
+
+    {% if error %}<p class="alert alert-error">{{ error }}</p>{% endif %}
+    {% if confirm %}<p class="alert alert-ok">{{ confirm }}</p>{% endif %}
+
+    {% if not confirm %}
+    <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+    <label>Nom d'utilisateur
+      <input type="text" name="username" required autofocus>
+    </label>
+    <label>Courriel (facultatif)
+      <input type="email" name="email">
+    </label>
+    <label>Mot de passe
+      <input type="password" name="password" required>
+    </label>
+    <label>Confirmer le mot de passe
+      <input type="password" name="confirm" required>
+    </label>
+    <p class="auth-hint">12 à 128 caractères, avec majuscule, minuscule, chiffre et caractère spécial.</p>
+    <button class="btn-primary" type="submit">Envoyer la demande</button>
+    {% endif %}
+
+    <p class="auth-foot"><a href="/login">Retour à la connexion</a></p>
+  </form>
+</div>
+{% endblock %}

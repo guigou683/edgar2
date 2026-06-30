@@ -38,9 +38,20 @@ Tous les artefacts (images, modèles, polices, JS/CSS) sont pré-téléchargés 
 transférés. Aucun CDN. Vérification cible : exécution sous `--network none`
 (`scripts/verify_offline.sh`).
 
+## Premier administrateur (bootstrap)
+Aucun mot de passe par défaut. Après le démarrage des conteneurs :
+```bash
+# Mot de passe imposé :
+docker compose exec app env EDGAR_BOOTSTRAP_PASSWORD='MotDePasse!Fort12' \
+  python scripts/bootstrap_admin.py
+# …ou laisser le script générer un mot de passe fort (affiché une seule fois).
+```
+Le changement de mot de passe est **forcé** à la première connexion.
+
 ## Feuille de route des briques
 - [x] **1. Socle web** — FastAPI, statics, healthcheck, en-têtes de sécurité.
-- [ ] 2. Auth/sécurité — Argon2id, sessions, rôles, bootstrap admin, audit+IP.
+- [x] **2. Auth/sécurité** — Argon2id, sessions révocables, rôles, CSRF,
+      politique MDP, anti-bruteforce, audit+IP, bootstrap admin.
 - [ ] 3. Multi-bases — registre `bases.json`, cloisonnement.
 - [ ] 4. Ingestion — parsing/OCR → chunking → tagging → embeddings dense+sparse.
 - [ ] 5. Retrieval — multi-query → hybride RRF → fusion → reranking → seuil.

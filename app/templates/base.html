@@ -5,30 +5,45 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>{{ title | default("EDGAR v2") }}</title>
   <link rel="stylesheet" href="/static/css/edgar.css">
-  <!-- HTMX vendu localement (aucun CDN). Présent dès qu'il sera déposé dans static/vendor/. -->
   <script src="/static/vendor/htmx.min.js" defer></script>
+  <script src="/static/js/app.js" defer></script>
 </head>
 <body>
   <div class="layout">
-    <!-- Barre latérale (sera enrichie : nouvelle conversation, bases, compte, admin) -->
     <aside class="sidebar">
       <div class="brand">
         <img src="/static/img/logo-marine.svg" alt="Marine nationale" class="brand-logo"
              onerror="this.style.display='none'">
         <span class="brand-name">EDGAR&nbsp;v2</span>
       </div>
+
+      {% if user %}
+      <button class="btn-new" type="button">+ Nouvelle conversation</button>
+      {% endif %}
+
       <p class="sidebar-note">Exploration de Documentation Guidée par Agent de Raisonnement</p>
+
+      <div class="sidebar-spacer"></div>
+
+      {% if user %}
+      <div class="account">
+        <div class="account-name">{{ user.username }}</div>
+        <div class="account-role">{{ user.role }}</div>
+        <form method="post" action="/logout">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+          <button class="btn-logout" type="submit">Déconnexion</button>
+        </form>
+      </div>
+      {% endif %}
     </aside>
 
-    <!-- Zone principale -->
     <main class="content">
       {% block content %}
       <section class="welcome">
         <h1>EDGAR&nbsp;v2</h1>
-        <p>Socle opérationnel. Recherche hybride, re-prompt multi-requêtes,
-           tagging et interface de chat arrivent par briques successives.</p>
-        <p class="muted">État du système :
-          <a href="/healthz">/healthz</a></p>
+        <p>Bienvenue{% if user %}, {{ user.username }}{% endif %}. Le chat, la recherche
+           hybride et le panneau d'expérimentation arrivent par briques successives.</p>
+        <p class="muted">État du système : <a href="/healthz">/healthz</a></p>
       </section>
       {% endblock %}
     </main>

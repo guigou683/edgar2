@@ -50,6 +50,51 @@ body {
 a { color: var(--marine-acc); }
 a:hover { color: var(--or); }
 
+/* --- Sidebar : boutons & bloc compte --- */
+.sidebar { display: flex; flex-direction: column; }
+.sidebar-spacer { flex: 1; }
+.btn-new {
+  width: 100%; margin-top: 16px; padding: 9px 12px;
+  background: var(--marine-acc); color: #fff; border: none;
+  border-radius: var(--radius); cursor: pointer; font-size: 14px;
+}
+.btn-new:hover { background: var(--marine); }
+.account { border-top: 1px solid var(--border); padding-top: 12px; }
+.account-name { font-weight: 600; }
+.account-role { color: var(--text-muted); font-size: 12px; text-transform: capitalize; }
+.btn-logout {
+  margin-top: 8px; width: 100%; padding: 7px; background: transparent;
+  color: var(--text-muted); border: 1px solid var(--border);
+  border-radius: var(--radius); cursor: pointer;
+}
+.btn-logout:hover { color: var(--text); border-color: var(--marine-acc); }
+
+/* --- Formulaires d'authentification --- */
+.auth-wrap { display: flex; justify-content: center; align-items: flex-start; padding-top: 6vh; }
+.auth-card {
+  width: 100%; max-width: 380px; background: var(--bg-elev);
+  border: 1px solid var(--border); border-radius: 14px; padding: 28px;
+  display: flex; flex-direction: column; gap: 14px;
+}
+.auth-title { margin: 0 0 6px; font-size: 22px; }
+.auth-card label { display: flex; flex-direction: column; gap: 6px; font-size: 13px; color: var(--text-muted); }
+.auth-card input {
+  background: var(--bg); color: var(--text); border: 1px solid var(--border);
+  border-radius: 8px; padding: 10px 12px; font-size: 15px;
+}
+.auth-card input:focus { outline: none; border-color: var(--marine-acc); }
+.auth-hint { color: var(--text-muted); font-size: 12px; margin: 0; }
+.auth-foot { color: var(--text-muted); font-size: 13px; text-align: center; margin: 4px 0 0; }
+.btn-primary {
+  margin-top: 4px; padding: 11px; background: var(--marine-acc); color: #fff;
+  border: none; border-radius: 8px; font-size: 15px; cursor: pointer;
+}
+.btn-primary:hover { background: var(--marine); }
+.alert { padding: 10px 12px; border-radius: 8px; font-size: 13px; margin: 0; }
+.alert-error { background: #3a1a1f; color: #f3b6bd; border: 1px solid #5a2630; }
+.alert-ok { background: #16321f; color: #a7e0bd; border: 1px solid #245038; }
+.alert-info { background: #16263a; color: #a9cbef; border: 1px solid #244a6e; }
+
 /* --- Responsive : sidebar repliée sur petit écran --- */
 @media (max-width: 720px) {
   .layout { flex-direction: column; }
