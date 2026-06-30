@@ -19,6 +19,7 @@ from __future__ import annotations
 import hashlib
 import uuid
 from dataclasses import dataclass, field
+from pathlib import Path
 from typing import Any, Optional
 
 from core import keywords as kw
@@ -103,3 +104,25 @@ def index_chunks(base_id: str, doc_hash: str, chunks: list[Chunk],
         })
     vectorstore.upsert_chunks(base_id, points)
     return {"indexed": len(points), "skipped": False, "reason": ""}
+
+
+def ingest_file(base_id: str, file_path: str, file_name: Optional[str] = None,
+                strategy: str = "fast", top_keywords: int = 8,
+                skip_if_indexed: bool = True) -> dict[str, Any]:
+    """Indexe un fichier complet : lecture -> hash -> parsing -> chunks -> index.
+
+    La déduplication s'appuie sur le hash du fichier (avant tout parsing coûteux).
+    Les images forcent l'OCR quelle que soit la stratégie (cf. parsers.parse_file).
+    """
+    p = Path(file_path)
+    file_name = file_name or p.name
+    data = p.read_bytes()
+    doc_hash = file_hash(data)
+
+    if skip_if_indexed and is_indexed(base_id, doc_hash):
+        return {"indexed": 0, "skipped": True, "reason": "document déjà indexé"}
+
+    # Import paresseux pour éviter tout cycle (parsers importe ingest.Chunk).
+    from core.parsers import parse_file
+    chunks = parse_file(file_path, file_name, strategy)
+    return index_chunks(base_id, doc_hash, chunks, top_keywords, skip_if_indexed=False)

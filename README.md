@@ -58,7 +58,9 @@ Le changement de mot de passe est **forcé** à la première connexion.
 - [x] **4a. Vectorisation + tagging** — embeddings bge-m3 (lots de 32), sparse
       BM25 FastEmbed (modèle **bundlé offline**), mots-clés YAKE, dédup par hash,
       upsert hybride. Testé offline en conteneur (Ollama+Qdrant réels).
-- [ ] 4b. Parsing/OCR — `unstructured` + Tesseract (fra+eng) → chunks.
+- [x] **4b. Parsing/OCR** — `unstructured` (fast=pdfminer, ocr_only=Tesseract
+      fra+eng), découpage structuré `chunk_by_title`, images en OCR forcé,
+      `ingest_file` (hash→parsing→chunks→index). Testé en conteneur (md, docx, OCR).
 - [ ] 5. Retrieval — multi-query → hybride RRF → fusion → reranking → seuil.
 - [ ] 6. Génération streaming + UI chat (sources, diagnostic).
 - [ ] 7. Panneau d'expérimentation (toggles/sliders).
