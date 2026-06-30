@@ -30,6 +30,8 @@ class Settings:
     DOCUMENTS_DIR: Path = Path(os.environ.get("EDGAR_DOCS_DIR", "/app/documents"))
     STATIC_DIR: Path = BASE_DIR / "static"
     TEMPLATES_DIR: Path = BASE_DIR / "templates"
+    # Modèles bundlés dans l'image (FastEmbed BM25, reranker…), offline.
+    MODELS_DIR: Path = Path(os.environ.get("EDGAR_MODELS_DIR", str(BASE_DIR / "models")))
 
     # --- Fichiers de configuration ---
     @property

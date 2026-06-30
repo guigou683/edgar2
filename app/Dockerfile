@@ -17,6 +17,14 @@ WORKDIR /app
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
+# Modèles bundlés dans l'image (offline). On lève temporairement le mode hors-ligne
+# UNIQUEMENT pendant le build (poste connecté) pour télécharger le modèle BM25 ;
+# à l'exécution, HF_HUB_OFFLINE=1 reste actif et bloque tout accès réseau.
+ENV EDGAR_MODELS_DIR=/app/models
+RUN mkdir -p /app/models && \
+    HF_HUB_OFFLINE=0 TRANSFORMERS_OFFLINE=0 python -c \
+    "from fastembed import SparseTextEmbedding; SparseTextEmbedding(model_name='Qdrant/bm25', cache_dir='/app/models/fastembed')"
+
 # Code applicatif
 COPY . .
 

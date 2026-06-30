@@ -55,7 +55,10 @@ Le changement de mot de passe est **forcé** à la première connexion.
       politique MDP, anti-bruteforce, audit+IP, bootstrap admin.
 - [x] **3. Multi-bases** — registre `bases.json`, `vectorstore.py` (collections
       Qdrant `dense`+`sparse`, recherche hybride RRF, cloisonnement). Testé contre Qdrant réel.
-- [ ] 4. Ingestion — parsing/OCR → chunking → tagging → embeddings dense+sparse.
+- [x] **4a. Vectorisation + tagging** — embeddings bge-m3 (lots de 32), sparse
+      BM25 FastEmbed (modèle **bundlé offline**), mots-clés YAKE, dédup par hash,
+      upsert hybride. Testé offline en conteneur (Ollama+Qdrant réels).
+- [ ] 4b. Parsing/OCR — `unstructured` + Tesseract (fra+eng) → chunks.
 - [ ] 5. Retrieval — multi-query → hybride RRF → fusion → reranking → seuil.
 - [ ] 6. Génération streaming + UI chat (sources, diagnostic).
 - [ ] 7. Panneau d'expérimentation (toggles/sliders).

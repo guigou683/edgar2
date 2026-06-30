@@ -18,14 +18,14 @@ argon2-cffi==23.1.0
 
 # --- Vectorstore & recherche hybride (brique : indexation/retrieval) ---
 qdrant-client==1.12.1
-# fastembed==0.4.2
+fastembed==0.4.2
 
-# --- Parsing & OCR (brique : ingestion) ---
+# --- Parsing & OCR (brique : ingestion 4b) ---
 # unstructured[pdf,docx,pptx,xlsx]==0.16.11
 # pytesseract==0.3.13
 
 # --- Mots-clés (brique : tagging) ---
-# yake==0.4.8
+yake==0.4.8
 
 # --- Reranking CPU (brique : reranking) ---
 # sentence-transformers==3.3.1
