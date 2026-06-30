@@ -7,6 +7,9 @@ la recherche.
 """
 from __future__ import annotations
 
+import json
+from typing import Iterator
+
 import httpx
 
 from core.config import settings
@@ -35,3 +38,85 @@ def embed_texts(texts: list[str], model: str | None = None) -> list[list[float]]
 def embed_query(text: str, model: str | None = None) -> list[float]:
     """Embedding dense d'une requête unique."""
     return embed_texts([text], model=model)[0]
+
+
+# --------------------------------------------------------------------------
+# Re-prompt multi-requêtes (évolution v2)
+# --------------------------------------------------------------------------
+_REFORMULATE_SYSTEM = (
+    "Tu es un assistant de recherche documentaire en français. À partir d'une "
+    "question, tu produis des reformulations utiles pour une recherche : "
+    "correction, développement des sigles, synonymes, variantes lexicales. "
+    "Réponds UNIQUEMENT par les reformulations, une par ligne, sans numérotation "
+    "ni commentaire."
+)
+
+
+def reformulate(question: str, n: int = 3, model: str | None = None) -> list[str]:
+    """Génère n reformulations de la question (la question d'origine est gérée à part).
+
+    En cas d'échec du LLM, renvoie une liste vide (le pipeline retombe sur la
+    seule question d'origine).
+    """
+    model = model or settings.LLM_MODEL
+    prompt = (f"Question : {question}\n\n"
+              f"Donne {n} reformulations différentes, une par ligne.")
+    try:
+        text = generate(prompt, system=_REFORMULATE_SYSTEM, model=model, temperature=0.4)
+    except Exception:
+        return []
+    variants = []
+    for line in text.splitlines():
+        line = line.strip(" \t-•*0123456789.").strip()
+        if line and line.lower() != question.lower():
+            variants.append(line)
+    # Dédup en conservant l'ordre, borné à n.
+    seen, out = set(), []
+    for v in variants:
+        if v.lower() not in seen:
+            seen.add(v.lower())
+            out.append(v)
+        if len(out) >= n:
+            break
+    return out
+
+
+# --------------------------------------------------------------------------
+# Génération
+# --------------------------------------------------------------------------
+def generate(prompt: str, system: str | None = None, model: str | None = None,
+             temperature: float = 0.2) -> str:
+    """Génération non-streamée (utilisée pour la reformulation)."""
+    model = model or settings.LLM_MODEL
+    payload = {"model": model, "prompt": prompt, "stream": False,
+               "options": {"temperature": temperature}}
+    if system:
+        payload["system"] = system
+    with httpx.Client(timeout=120.0) as client:
+        r = client.post(f"{settings.OLLAMA_URL}/api/generate", json=payload)
+        r.raise_for_status()
+        return r.json().get("response", "")
+
+
+def generate_stream(prompt: str, system: str | None = None, model: str | None = None,
+                    temperature: float = 0.2) -> Iterator[str]:
+    """Génération en streaming : produit les jetons au fil de l'eau (pour SSE)."""
+    model = model or settings.LLM_MODEL
+    payload = {"model": model, "prompt": prompt, "stream": True,
+               "options": {"temperature": temperature}}
+    if system:
+        payload["system"] = system
+    with httpx.Client(timeout=300.0) as client:
+        with client.stream("POST", f"{settings.OLLAMA_URL}/api/generate", json=payload) as r:
+            r.raise_for_status()
+            for line in r.iter_lines():
+                if not line:
+                    continue
+                try:
+                    obj = json.loads(line)
+                except json.JSONDecodeError:
+                    continue
+                if obj.get("response"):
+                    yield obj["response"]
+                if obj.get("done"):
+                    break

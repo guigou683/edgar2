@@ -61,7 +61,10 @@ Le changement de mot de passe est **forcé** à la première connexion.
 - [x] **4b. Parsing/OCR** — `unstructured` (fast=pdfminer, ocr_only=Tesseract
       fra+eng), découpage structuré `chunk_by_title`, images en OCR forcé,
       `ingest_file` (hash→parsing→chunks→index). Testé en conteneur (md, docx, OCR).
-- [ ] 5. Retrieval — multi-query → hybride RRF → fusion → reranking → seuil.
+- [x] **5. Retrieval** — re-prompt multi-requêtes (mistral), hybride RRF par
+      requête, fusion inter-requêtes RRF, reranking bge-reranker-v2-m3 (CPU,
+      bundlé), seuil de pertinence (refus d'inventer), leviers + diagnostic.
+      Testé en conteneur (13 assertions).
 - [ ] 6. Génération streaming + UI chat (sources, diagnostic).
 - [ ] 7. Panneau d'expérimentation (toggles/sliders).
 - [ ] 8. Administration (bases, comptes, modèles, système, journaux).

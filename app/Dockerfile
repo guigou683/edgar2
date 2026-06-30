@@ -29,11 +29,14 @@ RUN pip install --no-cache-dir -r requirements.txt
 # hors-ligne UNIQUEMENT pendant le build (poste connecté) ; à l'exécution,
 # HF_HUB_OFFLINE=1 reste actif et bloque tout accès réseau.
 ENV EDGAR_MODELS_DIR=/app/models \
-    NLTK_DATA=/app/models/nltk
-RUN mkdir -p /app/models/nltk && \
+    NLTK_DATA=/app/models/nltk \
+    HF_HOME=/app/models/hf
+RUN mkdir -p /app/models/nltk /app/models/hf && \
     HF_HUB_OFFLINE=0 TRANSFORMERS_OFFLINE=0 python -c \
     "from fastembed import SparseTextEmbedding; SparseTextEmbedding(model_name='Qdrant/bm25', cache_dir='/app/models/fastembed')" && \
-    python -c "import nltk; [nltk.download(p, download_dir='/app/models/nltk') for p in ['punkt','punkt_tab','averaged_perceptron_tagger','averaged_perceptron_tagger_eng']]"
+    python -c "import nltk; [nltk.download(p, download_dir='/app/models/nltk') for p in ['punkt','punkt_tab','averaged_perceptron_tagger','averaged_perceptron_tagger_eng']]" && \
+    HF_HUB_OFFLINE=0 TRANSFORMERS_OFFLINE=0 python -c \
+    "from sentence_transformers import CrossEncoder; CrossEncoder('BAAI/bge-reranker-v2-m3', device='cpu')"
 
 # Code applicatif
 COPY . .
