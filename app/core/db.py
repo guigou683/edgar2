@@ -317,3 +317,21 @@ def list_messages(conversation_id: int) -> list[dict[str, Any]]:
             "SELECT * FROM messages WHERE conversation_id = ? ORDER BY id", (conversation_id,)
         ).fetchall()
         return [dict(r) for r in rows]
+
+
+# --------------------------------------------------------------------------
+# Réglages globaux (clé/valeur JSON)
+# --------------------------------------------------------------------------
+def get_setting(key: str) -> Optional[str]:
+    with get_conn() as conn:
+        row = conn.execute("SELECT value_json FROM settings WHERE key = ?", (key,)).fetchone()
+        return row["value_json"] if row else None
+
+
+def set_setting(key: str, value_json: str) -> None:
+    with get_conn() as conn:
+        conn.execute(
+            "INSERT INTO settings (key, value_json) VALUES (?, ?) "
+            "ON CONFLICT(key) DO UPDATE SET value_json = excluded.value_json",
+            (key, value_json),
+        )

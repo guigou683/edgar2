@@ -1,0 +1,58 @@
+{% extends "base.html" %}
+{% import "partials/macros.html" as ui %}
+{% block content %}
+<div class="admin">
+  <h1>Comptes</h1>
+  {{ ui.admin_nav('users') }}
+
+  <div class="admin-card">
+    <h2>Utilisateurs</h2>
+    <p class="help">Validez les comptes en attente, ajustez les rôles ou suspendez un accès.
+       Toute modification révoque immédiatement les sessions du compte concerné.</p>
+    <table class="admin-table">
+      <thead><tr><th>Utilisateur</th><th>Rôle</th><th>Statut</th><th>Actions</th></tr></thead>
+      <tbody>
+        {% for u in users %}
+        <tr>
+          <td>{{ u.username }}{% if u.email %}<div class="help">{{ u.email }}</div>{% endif %}</td>
+          <td>{{ u.role }}</td>
+          <td>
+            <span class="pill pill-{{ u.status }}">{{ u.status }}</span>
+            {% if u.locked_until %}<span class="help">verrouillé</span>{% endif %}
+          </td>
+          <td>
+            <div class="row">
+              {% if u.status != 'active' %}
+              <form method="post" action="/admin/users/action">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+                <input type="hidden" name="user_id" value="{{ u.id }}">
+                <input type="hidden" name="action" value="activate">
+                <button class="btn-mini" type="submit">Activer</button>
+              </form>
+              {% endif %}
+              {% if u.status != 'suspended' %}
+              <form method="post" action="/admin/users/action">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+                <input type="hidden" name="user_id" value="{{ u.id }}">
+                <input type="hidden" name="action" value="suspend">
+                <button class="btn-mini danger" type="submit">Suspendre</button>
+              </form>
+              {% endif %}
+              <form method="post" action="/admin/users/action" class="row">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+                <input type="hidden" name="user_id" value="{{ u.id }}">
+                <input type="hidden" name="action" value="set_role">
+                <select name="role">
+                  {% for r in roles %}<option value="{{ r }}" {% if r == u.role %}selected{% endif %}>{{ r }}</option>{% endfor %}
+                </select>
+                <button class="btn-mini" type="submit">Rôle</button>
+              </form>
+            </div>
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+{% endblock %}

@@ -1,0 +1,28 @@
+{% extends "base.html" %}
+{% import "partials/macros.html" as ui %}
+{% block content %}
+<div class="admin">
+  <h1>Journaux</h1>
+  {{ ui.admin_nav('logs') }}
+
+  <div class="admin-card" style="max-width: 100%;">
+    <h2>Journal d'audit (200 dernières entrées)</h2>
+    <table class="admin-table">
+      <thead><tr><th>Horodatage (UTC)</th><th>Action</th><th>Utilisateur</th><th>IP</th><th>Détail</th></tr></thead>
+      <tbody>
+        {% for e in entries %}
+        <tr>
+          <td class="help">{{ e.ts[:19] | replace('T', ' ') }}</td>
+          <td>{{ e.action }}</td>
+          <td>{{ e.username or "—" }}</td>
+          <td class="help">{{ e.ip or "—" }}</td>
+          <td class="help">{{ e.detail or "" }}</td>
+        </tr>
+        {% else %}
+        <tr><td colspan="5" class="help">Aucune entrée.</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+{% endblock %}

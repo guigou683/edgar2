@@ -70,6 +70,12 @@ Le changement de mot de passe est **forcé** à la première connexion.
       interface chat (bulles, Markdown assaini, coloration code, bloc Sources
       dépliable, diagnostic), assets front vendus localement, corpus de démo.
       Streaming validé de bout en bout.
-- [ ] 7. Panneau d'expérimentation (toggles/sliders).
-- [ ] 8. Administration (bases, comptes, modèles, système, journaux).
-- [ ] 9. Chaîne d'export hors-ligne + vérification `--network none`.
+- [ ] 7. Panneau d'expérimentation (toggles/sliders) — *reporté* (leviers déjà
+      exposés côté moteur + réglages globaux admin ; panneau UI par session à faire).
+- [x] **8. Administration** — dashboard santé + points, CRUD bases, validation
+      comptes/rôles (révocation immédiate), réglages de recherche globaux,
+      journaux d'audit, contribution (upload + ingestion, filename assaini).
+      Garde de rôle testée (403). 
+- [x] **9. Export hors-ligne** — `pull_models.sh`, `export_offline.sh`,
+      `docker-compose.offline.yml` (réseau interne), `verify_offline.sh`
+      (--network none + réseau interne). Voir ci-dessous.

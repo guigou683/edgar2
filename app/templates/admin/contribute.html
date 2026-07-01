@@ -1,0 +1,29 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="admin">
+  <h1>Importer des documents</h1>
+  <p class="help">Ajoutez un document à une base ; il est analysé, découpé, taggé et indexé.
+     Formats : PDF, DOCX, MD, HTML, PPTX, XLSX, TXT, images (OCR).</p>
+
+  {% if result %}
+  <p class="alert {{ 'alert-ok' if result.ok else 'alert-error' }}">{{ result.message }}</p>
+  {% endif %}
+
+  <div class="admin-card">
+    {% if bases %}
+    <form class="admin-form" method="post" action="/contribute/upload" enctype="multipart/form-data">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+      <label>Base de destination
+        <select name="base_id">
+          {% for b in bases %}<option value="{{ b.id }}">{{ b.name }} ({{ b.parse_strategy }})</option>{% endfor %}
+        </select>
+      </label>
+      <label>Fichier<input type="file" name="file" required></label>
+      <div><button class="btn-mini" type="submit">Importer et indexer</button></div>
+    </form>
+    {% else %}
+    <p class="help">Aucune base disponible. Un administrateur doit d'abord en créer une.</p>
+    {% endif %}
+  </div>
+</div>
+{% endblock %}

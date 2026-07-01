@@ -1,0 +1,6 @@
+# Surcharge « hors-ligne » : rend le réseau interne (aucune sortie Internet).
+# Les conteneurs se voient entre eux (DNS Docker) mais n'ont AUCUN accès externe.
+# Usage : docker compose -f docker-compose.yml -f docker-compose.offline.yml up -d
+networks:
+  default:
+    internal: true

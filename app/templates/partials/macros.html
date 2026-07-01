@@ -18,6 +18,16 @@
 {% endif %}
 {% endmacro %}
 
+{% macro admin_nav(active) %}
+<nav class="admin-nav">
+  <a href="/admin" class="{{ 'on' if active == 'dashboard' }}">Système</a>
+  <a href="/admin/bases" class="{{ 'on' if active == 'bases' }}">Bases</a>
+  <a href="/admin/users" class="{{ 'on' if active == 'users' }}">Comptes</a>
+  <a href="/admin/models" class="{{ 'on' if active == 'models' }}">Modèles &amp; recherche</a>
+  <a href="/admin/logs" class="{{ 'on' if active == 'logs' }}">Journaux</a>
+</nav>
+{% endmacro %}
+
 {% macro render_diagnostics(diag) %}
 {% if diag %}
 <details class="diag">

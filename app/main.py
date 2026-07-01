@@ -12,18 +12,19 @@ import secrets
 from typing import Optional
 
 import httpx
-from fastapi import FastAPI, Form, Request
+from fastapi import FastAPI, File, Form, Request, UploadFile
 from fastapi.responses import JSONResponse, RedirectResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 
-from core import auth, bases, db, rag
+from core import appsettings, auth, bases, db, ingest, rag, vectorstore
 from core.config import settings
-from core.retrieval import SearchParams
 from core.security import (
     CSP_POLICY,
     client_ip,
     make_csrf_token,
+    safe_join,
+    sanitize_filename,
     verify_csrf_token,
 )
 
@@ -99,19 +100,6 @@ async def home(request: Request):
 # --------------------------------------------------------------------------
 # Chat (interface + streaming SSE)
 # --------------------------------------------------------------------------
-_PARAM_FIELDS = ("mode", "use_reprompt", "n_reformulations", "use_rerank",
-                 "top_k", "k_candidates", "threshold", "search_mode", "llm_model")
-
-
-def _params_from(overrides: dict) -> SearchParams:
-    """Construit les paramètres de recherche depuis les défauts + surcharges UI."""
-    p = SearchParams()
-    for k in _PARAM_FIELDS:
-        if overrides.get(k) is not None:
-            setattr(p, k, overrides[k])
-    return p
-
-
 @app.get("/chat")
 async def chat_page(request: Request, base: Optional[str] = None, conv: Optional[int] = None):
     user = auth.current_user(request)
@@ -173,7 +161,7 @@ async def chat_stream(request: Request):
     else:
         conv_id = db.create_conversation(user["id"], base_id, title=question)
 
-    params = _params_from(body.get("params") or {})
+    params = appsettings.build_params(body.get("params"))
     db.add_message(conv_id, "user", question)
     prep = rag.prepare(base_id, question, params)
 
@@ -355,6 +343,219 @@ async def change_password_submit(
     db.insert_audit("password_change", user["id"], user["username"],
                     client_ip(request), _ua(request), "")
     return RedirectResponse("/", status_code=303)
+
+
+# --------------------------------------------------------------------------
+# Administration (selon rôle) & contribution
+# --------------------------------------------------------------------------
+def _guard(request: Request, role: str):
+    """Contrôle d'accès. Renvoie (user, None) si autorisé, sinon (None, réponse)."""
+    user = auth.current_user(request)
+    if not user:
+        return None, RedirectResponse("/login", status_code=303)
+    if user["must_change_password"]:
+        return None, RedirectResponse("/change-password", status_code=303)
+    if not auth.has_role(user, role):
+        resp = _render_with_csrf(request, "admin/denied.html",
+                                 {"user": user, "title": "Accès refusé"})
+        resp.status_code = 403
+        return None, resp
+    return user, None
+
+
+@app.get("/admin")
+async def admin_dashboard(request: Request):
+    user, resp = _guard(request, auth.ROLE_ADMIN)
+    if resp:
+        return resp
+    ollama = await _ping(settings.OLLAMA_URL, "/api/tags")
+    qdrant = await _ping(settings.QDRANT_URL, "/healthz")
+    base_stats = []
+    for b in bases.load_bases():
+        try:
+            n = vectorstore.count_points(b["id"])
+        except Exception:
+            n = None
+        base_stats.append({**b, "points": n})
+    return _render_with_csrf(request, "admin/dashboard.html", {
+        "user": user, "title": "Administration", "ollama": ollama,
+        "qdrant": qdrant, "base_stats": base_stats,
+    })
+
+
+@app.get("/admin/bases")
+async def admin_bases(request: Request):
+    user, resp = _guard(request, auth.ROLE_ADMIN)
+    if resp:
+        return resp
+    return _render_with_csrf(request, "admin/bases.html", {
+        "user": user, "title": "Bases documentaires", "bases": bases.load_bases(),
+        "strategies": bases.PARSE_STRATEGIES,
+    })
+
+
+@app.post("/admin/bases/create")
+async def admin_bases_create(
+    request: Request, name: str = Form(...), description: str = Form(""),
+    parse_strategy: str = Form("fast"), llm_enrichment: str = Form(""),
+    csrf_token: str = Form(...),
+):
+    user, resp = _guard(request, auth.ROLE_ADMIN)
+    if resp:
+        return resp
+    if _check_csrf(request, csrf_token) and name.strip():
+        try:
+            bases.create_base(name, description, parse_strategy, llm_enrichment == "on")
+            db.insert_audit("base_create", user["id"], user["username"],
+                            client_ip(request), _ua(request), name.strip())
+        except Exception:
+            pass
+    return RedirectResponse("/admin/bases", status_code=303)
+
+
+@app.post("/admin/bases/delete")
+async def admin_bases_delete(request: Request, base_id: str = Form(...),
+                             csrf_token: str = Form(...)):
+    user, resp = _guard(request, auth.ROLE_ADMIN)
+    if resp:
+        return resp
+    if _check_csrf(request, csrf_token):
+        bases.delete_base(base_id, remove_documents=True)
+        db.insert_audit("base_delete", user["id"], user["username"],
+                        client_ip(request), _ua(request), base_id)
+    return RedirectResponse("/admin/bases", status_code=303)
+
+
+@app.get("/admin/users")
+async def admin_users(request: Request):
+    user, resp = _guard(request, auth.ROLE_ADMIN)
+    if resp:
+        return resp
+    return _render_with_csrf(request, "admin/users.html", {
+        "user": user, "title": "Comptes", "users": db.list_users(), "roles": auth.ROLES,
+    })
+
+
+@app.post("/admin/users/action")
+async def admin_users_action(request: Request, user_id: int = Form(...),
+                             action: str = Form(...), role: str = Form(""),
+                             csrf_token: str = Form(...)):
+    admin, resp = _guard(request, auth.ROLE_ADMIN)
+    if resp:
+        return resp
+    if _check_csrf(request, csrf_token):
+        target = db.get_user_by_id(user_id)
+        if target:
+            if action == "activate":
+                db.set_status(user_id, auth.STATUS_ACTIVE)
+            elif action == "suspend":
+                db.set_status(user_id, auth.STATUS_SUSPENDED)
+                db.revoke_user_sessions(user_id)          # révocation immédiate
+            elif action == "set_role" and role in auth.ROLES:
+                db.set_role(user_id, role)
+                db.revoke_user_sessions(user_id)          # rôle changé -> re-login
+            db.insert_audit(f"user_{action}", admin["id"], admin["username"],
+                            client_ip(request), _ua(request),
+                            f"cible={target['username']} role={role}")
+    return RedirectResponse("/admin/users", status_code=303)
+
+
+@app.get("/admin/models")
+async def admin_models(request: Request):
+    user, resp = _guard(request, auth.ROLE_ADMIN)
+    if resp:
+        return resp
+    installed = []
+    try:
+        async with httpx.AsyncClient(timeout=5.0) as client:
+            r = await client.get(f"{settings.OLLAMA_URL}/api/tags")
+        installed = [m["name"] for m in r.json().get("models", [])]
+    except Exception:
+        pass
+    return _render_with_csrf(request, "admin/models.html", {
+        "user": user, "title": "Modèles & recherche",
+        "installed": installed, "defaults": appsettings.load_defaults(),
+        "modes": ("hybrid", "dense", "bm25"),
+    })
+
+
+@app.post("/admin/models/save")
+async def admin_models_save(request: Request):
+    user, resp = _guard(request, auth.ROLE_ADMIN)
+    if resp:
+        return resp
+    form = await request.form()
+    if _check_csrf(request, form.get("csrf_token")):
+        overrides = {
+            "mode": form.get("mode"),
+            "llm_model": form.get("llm_model"),
+            "use_reprompt": form.get("use_reprompt") == "on",
+            "n_reformulations": form.get("n_reformulations"),
+            "use_rerank": form.get("use_rerank") == "on",
+            "top_k": form.get("top_k"),
+            "k_candidates": form.get("k_candidates"),
+            "threshold": form.get("threshold"),
+        }
+        appsettings.save_defaults(overrides)
+        db.insert_audit("settings_update", user["id"], user["username"],
+                        client_ip(request), _ua(request), "")
+    return RedirectResponse("/admin/models", status_code=303)
+
+
+@app.get("/admin/logs")
+async def admin_logs(request: Request):
+    user, resp = _guard(request, auth.ROLE_ADMIN)
+    if resp:
+        return resp
+    return _render_with_csrf(request, "admin/logs.html", {
+        "user": user, "title": "Journaux", "entries": db.list_audit(200),
+    })
+
+
+@app.get("/contribute")
+async def contribute_page(request: Request):
+    user, resp = _guard(request, auth.ROLE_CONTRIBUTOR)
+    if resp:
+        return resp
+    return _render_with_csrf(request, "admin/contribute.html", {
+        "user": user, "title": "Importer des documents", "bases": bases.load_bases(),
+    })
+
+
+@app.post("/contribute/upload")
+async def contribute_upload(request: Request, base_id: str = Form(...),
+                            csrf_token: str = Form(...), file: UploadFile = File(...)):
+    user, resp = _guard(request, auth.ROLE_CONTRIBUTOR)
+    if resp:
+        return resp
+    result = {"ok": False, "message": ""}
+    base = bases.get_base(base_id)
+    if not _check_csrf(request, csrf_token):
+        result["message"] = "Session expirée, réessayez."
+    elif not base:
+        result["message"] = "Base inconnue."
+    else:
+        # Assainissement du nom + confinement dans le dossier de la base.
+        safe_name = sanitize_filename(file.filename or "document")
+        try:
+            docs_dir = safe_join(settings.DOCUMENTS_DIR, base_id)
+            docs_dir.mkdir(parents=True, exist_ok=True)
+            dest = safe_join(docs_dir, safe_name)
+            data = await file.read()
+            dest.write_bytes(data)
+            rep = ingest.ingest_file(base_id, str(dest), file_name=safe_name,
+                                     strategy=base.get("parse_strategy", "fast"))
+            db.insert_audit("document_upload", user["id"], user["username"],
+                            client_ip(request), _ua(request),
+                            f"base={base_id} fichier={safe_name} {rep}")
+            result = {"ok": True, "message": f"« {safe_name} » importé — {rep.get('indexed', 0)} extraits."
+                      if not rep.get("skipped") else f"« {safe_name} » déjà indexé (déduplication)."}
+        except Exception as exc:
+            result["message"] = f"Échec de l'import ({type(exc).__name__})."
+    return _render_with_csrf(request, "admin/contribute.html", {
+        "user": user, "title": "Importer des documents",
+        "bases": bases.load_bases(), "result": result,
+    })
 
 
 # --------------------------------------------------------------------------

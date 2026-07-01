@@ -1,0 +1,37 @@
+{% extends "base.html" %}
+{% import "partials/macros.html" as ui %}
+{% block content %}
+<div class="admin">
+  <h1>Administration</h1>
+  {{ ui.admin_nav('dashboard') }}
+
+  <div class="admin-card">
+    <h2>État des services</h2>
+    <table class="admin-table">
+      <tr><td>Ollama (génération + embeddings)</td>
+        <td>{% if ollama.ok %}<span class="status-ok">disponible</span>{% else %}<span class="status-ko">indisponible</span>{% endif %}</td></tr>
+      <tr><td>Qdrant (base vectorielle)</td>
+        <td>{% if qdrant.ok %}<span class="status-ok">disponible</span>{% else %}<span class="status-ko">indisponible</span>{% endif %}</td></tr>
+    </table>
+  </div>
+
+  <div class="admin-card">
+    <h2>Bases documentaires</h2>
+    <table class="admin-table">
+      <thead><tr><th>Base</th><th>Stratégie</th><th>Enrichissement LLM</th><th>Points indexés</th></tr></thead>
+      <tbody>
+        {% for b in base_stats %}
+        <tr>
+          <td>{{ b.name }} <span class="help">({{ b.id }})</span></td>
+          <td>{{ b.parse_strategy }}</td>
+          <td>{{ "oui" if b.llm_enrichment else "non" }}</td>
+          <td>{{ b.points if b.points is not none else "—" }}</td>
+        </tr>
+        {% else %}
+        <tr><td colspan="4" class="help">Aucune base. Créez-en une dans l'onglet « Bases ».</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+{% endblock %}

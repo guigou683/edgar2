@@ -1,0 +1,51 @@
+{% extends "base.html" %}
+{% import "partials/macros.html" as ui %}
+{% block content %}
+<div class="admin">
+  <h1>Bases documentaires</h1>
+  {{ ui.admin_nav('bases') }}
+
+  <div class="admin-card">
+    <h2>Créer une base</h2>
+    <form class="admin-form" method="post" action="/admin/bases/create">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+      <label>Nom<input type="text" name="name" required></label>
+      <label>Description<input type="text" name="description"></label>
+      <label>Stratégie de parsing
+        <select name="parse_strategy">
+          {% for s in strategies %}<option value="{{ s }}">{{ s }}</option>{% endfor %}
+        </select>
+      </label>
+      <label class="inline"><input type="checkbox" name="llm_enrichment"> Enrichissement LLM des mots-clés (ingestion plus lente)</label>
+      <div><button class="btn-mini" type="submit">Créer la base</button></div>
+    </form>
+  </div>
+
+  <div class="admin-card">
+    <h2>Bases existantes</h2>
+    <table class="admin-table">
+      <thead><tr><th>Nom</th><th>Identifiant</th><th>Stratégie</th><th>Créée</th><th></th></tr></thead>
+      <tbody>
+        {% for b in bases %}
+        <tr>
+          <td>{{ b.name }}</td>
+          <td class="help">{{ b.id }}</td>
+          <td>{{ b.parse_strategy }}</td>
+          <td class="help">{{ b.created_at[:10] }}</td>
+          <td>
+            <form method="post" action="/admin/bases/delete"
+                  data-confirm="Supprimer la base « {{ b.name }} » et ses documents ?">
+              <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+              <input type="hidden" name="base_id" value="{{ b.id }}">
+              <button class="btn-mini danger" type="submit">Supprimer</button>
+            </form>
+          </td>
+        </tr>
+        {% else %}
+        <tr><td colspan="5" class="help">Aucune base.</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+{% endblock %}

@@ -1,0 +1,51 @@
+{% extends "base.html" %}
+{% import "partials/macros.html" as ui %}
+{% block content %}
+<div class="admin">
+  <h1>Modèles &amp; recherche</h1>
+  {{ ui.admin_nav('models') }}
+
+  <div class="admin-card">
+    <h2>Modèles Ollama installés</h2>
+    {% if installed %}
+    <ul>{% for m in installed %}<li>{{ m }}</li>{% endfor %}</ul>
+    {% else %}
+    <p class="help">Aucun modèle détecté (Ollama indisponible ou volume vide). Les modèles
+       sont pré-téléchargés hors-ligne dans le volume Ollama.</p>
+    {% endif %}
+    <p class="help">bge-m3 (embeddings) est imposé et non modifiable. bge-reranker-v2-m3 est bundlé dans l'image.</p>
+  </div>
+
+  <div class="admin-card">
+    <h2>Réglages de recherche par défaut (globaux)</h2>
+    <p class="help">Ces valeurs s'appliquent à toutes les requêtes, sauf surcharge par session.</p>
+    <form class="admin-form" method="post" action="/admin/models/save">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+      <label>Modèle de génération (LLM)
+        <select name="llm_model">
+          {% set current = defaults.get('llm_model', 'mistral:7b') %}
+          {% for m in installed %}<option value="{{ m }}" {% if m == current %}selected{% endif %}>{{ m }}</option>{% endfor %}
+          {% if not installed %}<option value="mistral:7b">mistral:7b</option>{% endif %}
+        </select>
+      </label>
+      <label>Mode de recherche
+        <select name="mode">
+          {% set cmode = defaults.get('mode', 'hybrid') %}
+          {% for m in modes %}<option value="{{ m }}" {% if m == cmode %}selected{% endif %}>{{ m }}</option>{% endfor %}
+        </select>
+      </label>
+      <label class="inline"><input type="checkbox" name="use_reprompt" {% if defaults.get('use_reprompt', true) %}checked{% endif %}> Re-prompt multi-requêtes</label>
+      <label>Nombre de reformulations (1–5)
+        <input type="number" name="n_reformulations" min="1" max="5" value="{{ defaults.get('n_reformulations', 3) }}"></label>
+      <label class="inline"><input type="checkbox" name="use_rerank" {% if defaults.get('use_rerank', true) %}checked{% endif %}> Reranking (cross-encoder)</label>
+      <label>Top-k conservés après reranking (1–30)
+        <input type="number" name="top_k" min="1" max="30" value="{{ defaults.get('top_k', 8) }}"></label>
+      <label>Candidats récupérés avant reranking (1–100)
+        <input type="number" name="k_candidates" min="1" max="100" value="{{ defaults.get('k_candidates', 20) }}"></label>
+      <label>Seuil de pertinence (0–1, refus d'inventer)
+        <input type="number" name="threshold" min="0" max="1" step="0.05" value="{{ defaults.get('threshold', 0.3) }}"></label>
+      <div><button class="btn-mini" type="submit">Enregistrer les défauts</button></div>
+    </form>
+  </div>
+</div>
+{% endblock %}

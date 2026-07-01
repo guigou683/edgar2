@@ -159,6 +159,13 @@ async function streamChat(chat, question, searchMode) {
 }
 
 document.addEventListener("DOMContentLoaded", () => {
+  // Confirmation avant soumission (formulaires destructifs) — CSP-clean.
+  document.querySelectorAll("form[data-confirm]").forEach((f) => {
+    f.addEventListener("submit", (e) => {
+      if (!window.confirm(f.getAttribute("data-confirm"))) e.preventDefault();
+    });
+  });
+
   // Rendu Markdown de l'historique.
   document.querySelectorAll(".md-content[data-md]").forEach((e) => {
     renderMarkdown(e, e.textContent.trim());
