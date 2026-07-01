@@ -7,7 +7,7 @@
 set -euo pipefail
 
 echo "== Partie A : BM25 + reranker sans aucun réseau (--network none) =="
-docker run --rm --network none edgar2-app:latest python - <<'PY'
+docker run --rm -i --network none edgar2-app:latest python - <<'PY'
 import sys
 sys.path.insert(0, "/app")
 from core import sparse, rerank
@@ -19,9 +19,14 @@ print("  OK : BM25 et reranker chargés depuis l'image, sans réseau.")
 PY
 
 echo "== Partie B : pipeline complet sur réseau interne (sans egress Internet) =="
+# Recréation propre du réseau (les alias de service doivent être réinitialisés).
+docker compose -f docker-compose.yml -f docker-compose.offline.yml down
 docker compose -f docker-compose.yml -f docker-compose.offline.yml up -d
-echo "  (attente de la disponibilité des services…)"
-sleep 8
+echo "  (attente de la résolution DNS interne…)"
+for i in $(seq 1 30); do
+  docker compose exec -T app python -c "import socket;socket.gethostbyname('ollama');socket.gethostbyname('qdrant')" 2>/dev/null && break
+  sleep 2
+done
 echo "  -- test d'ingestion (parsing/OCR -> embeddings -> hybride) --"
 docker compose exec -T app python - < tests/test_ingest.py
 echo "  -- test de retrieval (multi-query -> rerank -> seuil -> génération) --"

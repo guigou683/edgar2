@@ -36,8 +36,25 @@ docker compose up --build
 
 ## Hors-ligne
 Tous les artefacts (images, modèles, polices, JS/CSS) sont pré-téléchargés puis
-transférés. Aucun CDN. Vérification cible : exécution sous `--network none`
-(`scripts/verify_offline.sh`).
+transférés. Aucun CDN. `HF_HUB_OFFLINE=1`/`TRANSFORMERS_OFFLINE=1` au runtime.
+
+**Export (poste connecté) :**
+```bash
+docker compose up -d --build          # construit l'image app
+bash scripts/pull_models.sh           # bge-m3, mistral:7b, qwen2.5:7b -> volume
+bash scripts/export_offline.sh        # -> ./offline_bundle (images, modèles, code)
+```
+Transférer `offline_bundle/` puis suivre `offline_bundle/IMPORT.md` sur le poste cible.
+
+**Vérification (`scripts/verify_offline.sh`) — validée :**
+- Partie A : BM25 (FastEmbed) et reranker (bge-reranker-v2-m3) chargés sous
+  `--network none` — **aucun** réseau ;
+- Partie B : stack sur réseau interne (egress Internet coupé, prouvé) →
+  ingestion + retrieval (parsing/OCR, bge-m3, hybride RRF, re-prompt mistral,
+  reranking, seuil, génération) : **27 assertions vertes**.
+
+**Prérequis hôte non embarquable** (pour le GPU) : pilote NVIDIA + NVIDIA
+Container Toolkit.
 
 ## Premier administrateur (bootstrap)
 Aucun mot de passe par défaut. Après le démarrage des conteneurs :
