@@ -74,13 +74,47 @@ def save_defaults(overrides: dict[str, Any]) -> dict[str, Any]:
     return clean
 
 
-def build_params(overrides: Optional[dict[str, Any]] = None) -> SearchParams:
-    """Construit les paramètres effectifs : défauts codés < défauts globaux < surcharges."""
+def build_params(*override_sources: Optional[dict[str, Any]]) -> SearchParams:
+    """Paramètres effectifs : défauts codés < défauts globaux < surcharges (dans l'ordre)."""
     p = SearchParams()
-    for source in (load_defaults(), overrides or {}):
-        for k, v in source.items():
+    for source in (load_defaults(), *override_sources):
+        for k, v in (source or {}).items():
             if k in _FIELDS:
                 c = _coerce(k, v)
                 if c is not None:
                     setattr(p, k, c)
     return p
+
+
+# --- Réglages par utilisateur (portée session, priment sur les défauts globaux) ---
+def load_user_overrides(user_id: int) -> dict[str, Any]:
+    raw = db.get_user_settings(user_id)
+    if not raw:
+        return {}
+    try:
+        return json.loads(raw)
+    except json.JSONDecodeError:
+        return {}
+
+
+def save_user_overrides(user_id: int, overrides: dict[str, Any]) -> dict[str, Any]:
+    clean: dict[str, Any] = {}
+    for k, v in overrides.items():
+        if k in _FIELDS:
+            c = _coerce(k, v)
+            if c is not None:
+                clean[k] = c
+    db.set_user_settings(user_id, json.dumps(clean, ensure_ascii=False))
+    return clean
+
+
+def clear_user_overrides(user_id: int) -> None:
+    db.delete_user_settings(user_id)
+
+
+def effective_dict(user_id: int) -> dict[str, Any]:
+    """Valeurs effectives pour initialiser le panneau (globaux < surcharges utilisateur)."""
+    p = build_params(load_user_overrides(user_id))
+    return {k: getattr(p, k) for k in
+            ("mode", "use_reprompt", "n_reformulations", "use_rerank",
+             "top_k", "k_candidates", "threshold", "search_mode", "llm_model")}

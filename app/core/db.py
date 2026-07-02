@@ -335,3 +335,24 @@ def set_setting(key: str, value_json: str) -> None:
             "ON CONFLICT(key) DO UPDATE SET value_json = excluded.value_json",
             (key, value_json),
         )
+
+
+def get_user_settings(user_id: int) -> Optional[str]:
+    with get_conn() as conn:
+        row = conn.execute("SELECT value_json FROM user_settings WHERE user_id = ?",
+                           (user_id,)).fetchone()
+        return row["value_json"] if row else None
+
+
+def set_user_settings(user_id: int, value_json: str) -> None:
+    with get_conn() as conn:
+        conn.execute(
+            "INSERT INTO user_settings (user_id, value_json) VALUES (?, ?) "
+            "ON CONFLICT(user_id) DO UPDATE SET value_json = excluded.value_json",
+            (user_id, value_json),
+        )
+
+
+def delete_user_settings(user_id: int) -> None:
+    with get_conn() as conn:
+        conn.execute("DELETE FROM user_settings WHERE user_id = ?", (user_id,))

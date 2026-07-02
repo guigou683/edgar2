@@ -13,7 +13,12 @@ from typing import Optional
 
 import httpx
 from fastapi import FastAPI, File, Form, Request, UploadFile
-from fastapi.responses import JSONResponse, RedirectResponse, StreamingResponse
+from fastapi.responses import (
+    FileResponse,
+    JSONResponse,
+    RedirectResponse,
+    StreamingResponse,
+)
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 
@@ -45,10 +50,15 @@ CSRF_COOKIE = "edgar_csrf"
 @app.middleware("http")
 async def security_headers(request: Request, call_next):
     response = await call_next(request)
-    response.headers["Content-Security-Policy"] = CSP_POLICY
     response.headers["X-Content-Type-Options"] = "nosniff"
-    response.headers["X-Frame-Options"] = "DENY"
     response.headers["Referrer-Policy"] = "no-referrer"
+    if request.url.path.startswith("/doc/"):
+        # Documents servis : consultables en iframe même-origine (aperçu PDF).
+        response.headers["Content-Security-Policy"] = "default-src 'self'; frame-ancestors 'self'"
+        response.headers["X-Frame-Options"] = "SAMEORIGIN"
+    else:
+        response.headers["Content-Security-Policy"] = CSP_POLICY
+        response.headers["X-Frame-Options"] = "DENY"
     return response
 
 
@@ -127,6 +137,10 @@ async def chat_page(request: Request, base: Optional[str] = None, conv: Optional
         "title": "EDGAR v2", "user": user, "bases": all_bases,
         "base_id": base_id, "conversations": convs, "conv_id": conv,
         "messages": messages,
+        # Panneau d'expérimentation : valeurs effectives + défauts globaux + modèles.
+        "panel": appsettings.effective_dict(user["id"]),
+        "global_defaults": appsettings.load_defaults(),
+        "installed_models": await _installed_models(),
     })
 
 
@@ -161,7 +175,9 @@ async def chat_stream(request: Request):
     else:
         conv_id = db.create_conversation(user["id"], base_id, title=question)
 
-    params = appsettings.build_params(body.get("params"))
+    # Fusion : défauts globaux < réglages utilisateur < surcharges de la requête.
+    params = appsettings.build_params(appsettings.load_user_overrides(user["id"]),
+                                      body.get("params"))
     db.add_message(conv_id, "user", question)
     prep = rag.prepare(base_id, question, params)
 
@@ -346,6 +362,56 @@ async def change_password_submit(
 
 
 # --------------------------------------------------------------------------
+# Réglages de recherche par session/utilisateur (panneau d'expérimentation)
+# --------------------------------------------------------------------------
+@app.post("/api/settings")
+async def save_settings(request: Request):
+    user = auth.current_user(request)
+    if not user:
+        return JSONResponse({"error": "non authentifié"}, status_code=401)
+    body = await request.json()
+    if not _check_csrf(request, body.get("csrf_token")):
+        return JSONResponse({"error": "CSRF invalide"}, status_code=403)
+    saved = appsettings.save_user_overrides(user["id"], body.get("params") or {})
+    return JSONResponse({"ok": True, "params": saved})
+
+
+@app.post("/api/settings/reset")
+async def reset_settings(request: Request):
+    user = auth.current_user(request)
+    if not user:
+        return JSONResponse({"error": "non authentifié"}, status_code=401)
+    body = await request.json()
+    if not _check_csrf(request, body.get("csrf_token")):
+        return JSONResponse({"error": "CSRF invalide"}, status_code=403)
+    appsettings.clear_user_overrides(user["id"])
+    return JSONResponse({"ok": True, "params": appsettings.effective_dict(user["id"])})
+
+
+# --------------------------------------------------------------------------
+# Consultation de document (aperçu PDF positionné, téléchargement) — confiné
+# --------------------------------------------------------------------------
+@app.get("/doc/{base_id}/{filename:path}")
+async def serve_doc(request: Request, base_id: str, filename: str,
+                    download: int = 0):
+    user = auth.current_user(request)
+    if not user:
+        return RedirectResponse("/login", status_code=303)
+    if not bases.get_base(base_id):
+        return JSONResponse({"error": "base inconnue"}, status_code=404)
+    try:
+        # Confinement strict au dossier de la base (anti path-traversal).
+        path = safe_join(settings.DOCUMENTS_DIR, base_id, filename)
+    except ValueError:
+        return JSONResponse({"error": "chemin invalide"}, status_code=400)
+    if not path.is_file():
+        return JSONResponse({"error": "fichier introuvable"}, status_code=404)
+    disposition = "attachment" if download else "inline"
+    return FileResponse(str(path), filename=path.name,
+                        content_disposition_type=disposition)
+
+
+# --------------------------------------------------------------------------
 # Administration (selon rôle) & contribution
 # --------------------------------------------------------------------------
 def _guard(request: Request, role: str):
@@ -465,13 +531,7 @@ async def admin_models(request: Request):
     user, resp = _guard(request, auth.ROLE_ADMIN)
     if resp:
         return resp
-    installed = []
-    try:
-        async with httpx.AsyncClient(timeout=5.0) as client:
-            r = await client.get(f"{settings.OLLAMA_URL}/api/tags")
-        installed = [m["name"] for m in r.json().get("models", [])]
-    except Exception:
-        pass
+    installed = await _installed_models()
     return _render_with_csrf(request, "admin/models.html", {
         "user": user, "title": "Modèles & recherche",
         "installed": installed, "defaults": appsettings.load_defaults(),
@@ -561,6 +621,16 @@ async def contribute_upload(request: Request, base_id: str = Form(...),
 # --------------------------------------------------------------------------
 # Santé
 # --------------------------------------------------------------------------
+async def _installed_models() -> list[str]:
+    """Liste des modèles Ollama installés (pour les sélecteurs de LLM)."""
+    try:
+        async with httpx.AsyncClient(timeout=5.0) as client:
+            r = await client.get(f"{settings.OLLAMA_URL}/api/tags")
+        return [m["name"] for m in r.json().get("models", [])]
+    except Exception:
+        return []
+
+
 async def _ping(url: str, path: str) -> dict:
     try:
         async with httpx.AsyncClient(timeout=3.0) as client:

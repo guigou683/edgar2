@@ -21,5 +21,8 @@ def parse_file(path: str, file_name: str, strategy: str = "fast") -> list:
     if ext in IMAGE_EXTS:
         from core.parsers import images
         return images.ocr_image(path, file_name)
+    if ext == ".pdf":
+        from core.parsers import pdf
+        return pdf.parse_pdf(path, file_name, strategy)
     from core.parsers import document
     return document.parse_document(path, file_name, strategy)

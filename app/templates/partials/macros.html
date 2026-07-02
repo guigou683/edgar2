@@ -1,4 +1,4 @@
-{% macro render_sources(sources) %}
+{% macro render_sources(sources, base_id) %}
 {% if sources %}
 <div class="sources">
   <div class="sources-title">Sources</div>
@@ -11,7 +11,18 @@
       {% if s.section %}<span class="src-meta">· {{ s.section }}</span>{% endif %}
       {% if s.score is not none %}<span class="src-score">{{ (s.score * 100) | round }} %</span>{% endif %}
     </summary>
-    <div class="source-cite">{{ s.text }}</div>
+    <div class="source-cite">
+      {{ s.text }}
+      {% if s.keywords %}<div class="src-keywords">Mots-clés : {{ s.keywords | join(', ') }}</div>{% endif %}
+      <div class="source-actions">
+        {% set is_pdf = s.file and s.file.lower().endswith('.pdf') %}
+        {% if is_pdf %}
+        <a href="/doc/{{ base_id }}/{{ s.file }}#page={{ s.page or 1 }}" target="_blank" rel="noopener">Ouvrir p.{{ s.page or 1 }}</a>
+        <button type="button" class="link-btn" data-doc="/doc/{{ base_id }}/{{ s.file }}#page={{ s.page or 1 }}">Aperçu</button>
+        {% endif %}
+        <a href="/doc/{{ base_id }}/{{ s.file }}?download=1">Télécharger</a>
+      </div>
+    </div>
   </details>
   {% endfor %}
 </div>

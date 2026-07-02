@@ -87,8 +87,12 @@ Le changement de mot de passe est **forcé** à la première connexion.
       interface chat (bulles, Markdown assaini, coloration code, bloc Sources
       dépliable, diagnostic), assets front vendus localement, corpus de démo.
       Streaming validé de bout en bout.
-- [ ] 7. Panneau d'expérimentation (toggles/sliders) — *reporté* (leviers déjà
-      exposés côté moteur + réglages globaux admin ; panneau UI par session à faire).
+- [x] **7. Panneau d'expérimentation** — ⚙️ toggles + sliders (mode hybride/
+      dense/BM25, re-prompt + N, rerank + top-k, seuil, k candidats, mode
+      recherche, LLM, affichage mots-clés) ; effet immédiat ; portée session
+      (prime) vs défauts globaux admin ; « réinitialiser » ; diagnostic sous
+      chaque réponse. **Aperçu PDF** positionné sur la page citée (route `/doc`
+      confinée, iframe même-origine) + téléchargement.
 - [x] **8. Administration** — dashboard santé + points, CRUD bases, validation
       comptes/rôles (révocation immédiate), réglages de recherche globaux,
       journaux d'audit, contribution (upload + ingestion, filename assaini).

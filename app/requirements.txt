@@ -33,6 +33,7 @@ openpyxl==3.1.5
 markdown==3.7
 python-magic==0.4.27
 pytesseract==0.3.13
+pi_heif==0.20.0            # requis par unstructured.partition.pdf (support HEIF)
 
 # --- Mots-clés (brique : tagging) ---
 yake==0.4.8

@@ -29,6 +29,80 @@
      data-conv-id="{{ conv_id or '' }}"
      data-csrf="{{ csrf_token }}">
 
+  <div class="chat-top">
+    <button class="gear-btn" type="button" data-panel-toggle
+            title="Régler les leviers de recherche">⚙️ Réglages de recherche</button>
+  </div>
+
+  <!-- Panneau d'expérimentation : effet immédiat sur la requête suivante -->
+  <div class="panel" data-panel hidden>
+    <p class="panel-note">Vos réglages sont <b>propres à votre session</b> et priment sur les
+       défauts globaux définis par l'administrateur. Effet immédiat, sans redémarrage.</p>
+
+    <div class="panel-grid">
+      <label title="Hybride = embeddings + BM25 fusionnés (RRF). Vectoriel = embeddings seuls. BM25 = lexical seul.">
+        Mode de recherche
+        <select data-p="mode">
+          <option value="hybrid" {% if panel.mode == 'hybrid' %}selected{% endif %}>Hybride (dense + BM25)</option>
+          <option value="dense"  {% if panel.mode == 'dense'  %}selected{% endif %}>Vectoriel seul</option>
+          <option value="bm25"   {% if panel.mode == 'bm25'   %}selected{% endif %}>BM25 seul</option>
+        </select>
+      </label>
+
+      <label title="Modèle de génération local.">
+        Modèle (LLM)
+        <select data-p="llm_model">
+          {% for m in installed_models %}
+          <option value="{{ m }}" {% if m == panel.llm_model %}selected{% endif %}>{{ m }}</option>
+          {% endfor %}
+          {% if not installed_models %}<option value="mistral:7b">mistral:7b</option>{% endif %}
+        </select>
+      </label>
+
+      <label class="switch" title="Reformule la question en plusieurs variantes avant la recherche.">
+        <input type="checkbox" data-p="use_reprompt" {% if panel.use_reprompt %}checked{% endif %}>
+        Re-prompt multi-requêtes
+      </label>
+      <label title="Nombre de reformulations générées.">
+        Reformulations : <span data-out="n_reformulations">{{ panel.n_reformulations }}</span>
+        <input type="range" min="1" max="5" step="1" data-p="n_reformulations" value="{{ panel.n_reformulations }}">
+      </label>
+
+      <label class="switch" title="Ré-ordonne finement les candidats avec le cross-encoder.">
+        <input type="checkbox" data-p="use_rerank" {% if panel.use_rerank %}checked{% endif %}>
+        Reranking (cross-encoder)
+      </label>
+      <label title="Nombre de passages conservés après reranking.">
+        Top-k conservés : <span data-out="top_k">{{ panel.top_k }}</span>
+        <input type="range" min="1" max="30" step="1" data-p="top_k" value="{{ panel.top_k }}">
+      </label>
+
+      <label title="Nombre de candidats récupérés avant reranking.">
+        Candidats récupérés : <span data-out="k_candidates">{{ panel.k_candidates }}</span>
+        <input type="range" min="1" max="100" step="1" data-p="k_candidates" value="{{ panel.k_candidates }}">
+      </label>
+      <label title="Sous ce score, un passage est écarté. Plus haut = refus d'inventer plus strict.">
+        Seuil de pertinence : <span data-out="threshold">{{ panel.threshold }}</span>
+        <input type="range" min="0" max="1" step="0.05" data-p="threshold" value="{{ panel.threshold }}">
+      </label>
+
+      <label class="switch" title="Renvoie uniquement les extraits pertinents, sans génération.">
+        <input type="checkbox" data-p="search_mode" {% if panel.search_mode %}checked{% endif %}>
+        Mode recherche (extraits seuls)
+      </label>
+      <label class="switch" title="Affiche les mots-clés extraits sous chaque source.">
+        <input type="checkbox" data-show-keywords>
+        Afficher les mots-clés des sources
+      </label>
+    </div>
+
+    <div class="panel-actions">
+      <button type="button" class="btn-mini" data-panel-save>Enregistrer pour ma session</button>
+      <button type="button" class="btn-mini danger" data-panel-reset>Réinitialiser les défauts globaux</button>
+      <span class="panel-saved" data-panel-status></span>
+    </div>
+  </div>
+
   <div class="messages" data-messages>
     {% if not messages %}
     <div class="empty-state">
@@ -44,7 +118,7 @@
     {% else %}
     <div class="msg msg-assistant">
       <div class="bubble"><div class="md-content" data-md>{{ m.content }}</div></div>
-      {{ ui.render_sources(m.sources) }}
+      {{ ui.render_sources(m.sources, base_id) }}
       {{ ui.render_diagnostics(m.diagnostics) }}
     </div>
     {% endif %}
@@ -57,10 +131,6 @@
                 {% if not base_id %}disabled{% endif %}></textarea>
       <button class="btn-send" type="submit" {% if not base_id %}disabled{% endif %}>Envoyer</button>
     </div>
-    <label class="search-mode">
-      <input type="checkbox" data-search-mode>
-      Mode recherche (extraits seuls, sans génération)
-    </label>
   </form>
 </div>
 {% endblock %}
