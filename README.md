@@ -47,26 +47,24 @@ dans le magasin de confiance des postes clients pour supprimer l'avertissement n
 Tous les artefacts (images, modèles, polices, JS/CSS) sont pré-téléchargés puis
 transférés. Aucun CDN. `HF_HUB_OFFLINE=1`/`TRANSFORMERS_OFFLINE=1` au runtime.
 
-**Paquet d'installation complet (machine cible SANS Docker) — recommandé :**
-```bash
-bash scripts/prepare_offline_install.sh          # interactif : demande la cible
-#   ou : TARGET=debian GPU=yes bash scripts/prepare_offline_install.sh
-#   aperçu sans rien télécharger : ... --dry-run
-```
-Prépare `edgar2_offline_bundle/` avec **tout** le nécessaire selon la cible
-(Windows / Debian-Ubuntu / RHEL-Rocky-Alma-Fedora) : **Docker lui-même** (Docker
-Desktop ou binaires statiques Linux), **NVIDIA Container Toolkit** (si GPU), les
-**images**, les **modèles Ollama**, le **code + assets**, un **installeur Linux**,
-un **guide `INSTALL.md`** et les **sommes SHA256**. Le pilote NVIDIA reste à
-récupérer manuellement (dépend du GPU/OS).
+La préparation hors-ligne se fait en **deux temps** :
 
-**Export léger (machine cible qui a DÉJÀ Docker) :**
+**1. Docker + ses dépendances** (si la machine cible n'a pas encore Docker) :
+```bash
+bash scripts/download_docker.sh       # interactif : demande la cible (Windows/Debian/RHEL) + GPU
+#   ou : TARGET=debian GPU=yes bash scripts/download_docker.sh   (--dry-run pour prévisualiser)
+```
+→ `docker_offline/` : Docker Desktop+WSL2 (Windows) **ou** binaires statiques+compose (Linux),
+NVIDIA Container Toolkit (si GPU), installeur Linux et `INSTALL_DOCKER.md`.
+
+**2. L'application EDGAR** (images, modèles, code) :
 ```bash
 docker compose up -d --build          # construit les images
 bash scripts/pull_models.sh           # bge-m3, mistral:7b, qwen2.5:7b -> volume
-bash scripts/export_offline.sh        # -> ./offline_bundle (images, modèles, code)
+bash scripts/export_offline.sh        # -> ./offline_bundle (images, modèles, code, IMPORT.md)
 ```
-Transférer le dossier puis suivre `INSTALL.md` / `IMPORT.md` sur le poste cible.
+Transférer les deux dossiers puis suivre `INSTALL_DOCKER.md` puis `IMPORT.md` sur le poste cible.
+Le **pilote NVIDIA** (GPU) reste à récupérer manuellement (dépend du GPU/OS).
 
 **Vérification (`scripts/verify_offline.sh`) — validée :**
 - Partie A : BM25 (FastEmbed) et reranker (bge-reranker-v2-m3) chargés sous

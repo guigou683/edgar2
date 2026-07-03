@@ -28,5 +28,5 @@ Thumbs.db
 .vscode/
 
 # Paquets d'installation hors-ligne (volumineux, non versionnés)
-/edgar2_offline_bundle/
+/docker_offline/
 /offline_bundle/
