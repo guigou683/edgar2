@@ -6,7 +6,10 @@
   {{ ui.admin_nav('logs') }}
 
   <div class="admin-card" style="max-width: 100%;">
-    <h2>Journal d'audit (200 dernières entrées)</h2>
+    <div class="card-head">
+      <h2>Journal d'audit (200 dernières entrées)</h2>
+      <a class="btn-mini" href="/admin/logs/export.csv">Exporter en .csv</a>
+    </div>
     <table class="admin-table">
       <thead><tr><th>Horodatage (UTC)</th><th>Action</th><th>Utilisateur</th><th>IP</th><th>Détail</th></tr></thead>
       <tbody>

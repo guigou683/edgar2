@@ -76,9 +76,14 @@ _RE_SPECIAL = re.compile(r"[^A-Za-z0-9]")
 
 
 def validate_password_policy(password: str) -> tuple[bool, str]:
-    """Applique la politique : longueur 12–128, majuscule, minuscule, chiffre, spécial."""
-    if not 12 <= len(password) <= 128:
-        return False, "Le mot de passe doit comporter entre 12 et 128 caractères."
+    """Applique la politique : longueur ≥ 12, majuscule, minuscule, chiffre, spécial.
+
+    Un garde-fou haut non affiché (1024) évite les entrées abusivement longues.
+    """
+    if len(password) < 12:
+        return False, "Le mot de passe doit comporter au moins 12 caractères."
+    if len(password) > 1024:
+        return False, "Le mot de passe est trop long."
     if not _RE_UPPER.search(password):
         return False, "Le mot de passe doit contenir au moins une majuscule."
     if not _RE_LOWER.search(password):

@@ -7,6 +7,8 @@ Briques actives :
 """
 from __future__ import annotations
 
+import csv
+import io
 import json
 import secrets
 from typing import Optional
@@ -137,10 +139,10 @@ async def chat_page(request: Request, base: Optional[str] = None, conv: Optional
         "title": "EDGAR v2", "user": user, "bases": all_bases,
         "base_id": base_id, "conversations": convs, "conv_id": conv,
         "messages": messages,
-        # Panneau d'expérimentation : valeurs effectives + défauts globaux + modèles.
+        # Panneau d'expérimentation : valeurs effectives + modèles de génération.
         "panel": appsettings.effective_dict(user["id"]),
-        "global_defaults": appsettings.load_defaults(),
-        "installed_models": await _installed_models(),
+        "is_admin": auth.has_role(user, auth.ROLE_ADMIN),
+        "generation_models": await _generation_models(),
     })
 
 
@@ -176,8 +178,13 @@ async def chat_stream(request: Request):
         conv_id = db.create_conversation(user["id"], base_id, title=question)
 
     # Fusion : défauts globaux < réglages utilisateur < surcharges de la requête.
-    params = appsettings.build_params(appsettings.load_user_overrides(user["id"]),
-                                      body.get("params"))
+    overrides = body.get("params") or {}
+    user_overrides = appsettings.load_user_overrides(user["id"])
+    # Sécurité : seul un admin peut imposer le modèle de génération (chargement VRAM).
+    if not auth.has_role(user, auth.ROLE_ADMIN):
+        overrides = {k: v for k, v in overrides.items() if k != "llm_model"}
+        user_overrides = {k: v for k, v in user_overrides.items() if k != "llm_model"}
+    params = appsettings.build_params(user_overrides, overrides)
     db.add_message(conv_id, "user", question)
     prep = rag.prepare(base_id, question, params)
 
@@ -289,10 +296,15 @@ async def register_submit(
                                  {"title": "Inscription", "error": "Session expirée, réessayez."})
 
     username = username.strip()
+    email = email.strip()
     if not username or password != confirm:
         return _render_with_csrf(request, "auth/register.html",
                                  {"title": "Inscription",
                                   "error": "Vérifiez le nom d'utilisateur et la confirmation."})
+    if "@" not in email or "." not in email.split("@")[-1]:
+        return _render_with_csrf(request, "auth/register.html",
+                                 {"title": "Inscription",
+                                  "error": "Un courriel valide est obligatoire."})
 
     ok, msg = auth.validate_password_policy(password)
     if not ok:
@@ -372,7 +384,11 @@ async def save_settings(request: Request):
     body = await request.json()
     if not _check_csrf(request, body.get("csrf_token")):
         return JSONResponse({"error": "CSRF invalide"}, status_code=403)
-    saved = appsettings.save_user_overrides(user["id"], body.get("params") or {})
+    params = body.get("params") or {}
+    # Un non-admin ne peut pas fixer le modèle de génération.
+    if not auth.has_role(user, auth.ROLE_ADMIN):
+        params = {k: v for k, v in params.items() if k != "llm_model"}
+    saved = appsettings.save_user_overrides(user["id"], params)
     return JSONResponse({"ok": True, "params": saved})
 
 
@@ -386,6 +402,22 @@ async def reset_settings(request: Request):
         return JSONResponse({"error": "CSRF invalide"}, status_code=403)
     appsettings.clear_user_overrides(user["id"])
     return JSONResponse({"ok": True, "params": appsettings.effective_dict(user["id"])})
+
+
+# --------------------------------------------------------------------------
+# Suppression de conversation
+# --------------------------------------------------------------------------
+@app.post("/conversations/{conv_id}/delete")
+async def conversation_delete(request: Request, conv_id: int,
+                              csrf_token: str = Form(...), base: str = Form("")):
+    user = auth.current_user(request)
+    if not user:
+        return RedirectResponse("/login", status_code=303)
+    c = db.get_conversation(conv_id)
+    if _check_csrf(request, csrf_token) and c and c["user_id"] == user["id"]:
+        db.delete_conversation(conv_id)
+    dest = f"/chat?base={base}" if base else "/chat"
+    return RedirectResponse(dest, status_code=303)
 
 
 # --------------------------------------------------------------------------
@@ -509,21 +541,68 @@ async def admin_users_action(request: Request, user_id: int = Form(...),
     admin, resp = _guard(request, auth.ROLE_ADMIN)
     if resp:
         return resp
-    if _check_csrf(request, csrf_token):
-        target = db.get_user_by_id(user_id)
-        if target:
-            if action == "activate":
-                db.set_status(user_id, auth.STATUS_ACTIVE)
-            elif action == "suspend":
-                db.set_status(user_id, auth.STATUS_SUSPENDED)
-                db.revoke_user_sessions(user_id)          # révocation immédiate
-            elif action == "set_role" and role in auth.ROLES:
-                db.set_role(user_id, role)
-                db.revoke_user_sessions(user_id)          # rôle changé -> re-login
-            db.insert_audit(f"user_{action}", admin["id"], admin["username"],
-                            client_ip(request), _ua(request),
-                            f"cible={target['username']} role={role}")
+
+    def users_page(error: str = ""):
+        return _render_with_csrf(request, "admin/users.html", {
+            "user": admin, "title": "Comptes", "users": db.list_users(),
+            "roles": auth.ROLES, "error": error})
+
+    if not _check_csrf(request, csrf_token):
+        return users_page("Session expirée, réessayez.")
+    target = db.get_user_by_id(user_id)
+    if not target:
+        return RedirectResponse("/admin/users", status_code=303)
+
+    # Anti-verrouillage : un admin ne peut ni se suspendre ni se rétrograder lui-même.
+    if user_id == admin["id"] and action in ("suspend", "set_role"):
+        return users_page("Vous ne pouvez pas modifier votre propre rôle ni votre statut "
+                          "(sécurité anti-verrouillage).")
+
+    if action == "activate":
+        db.set_status(user_id, auth.STATUS_ACTIVE)
+    elif action == "suspend":
+        db.set_status(user_id, auth.STATUS_SUSPENDED)
+        db.revoke_user_sessions(user_id)              # révocation immédiate (cible)
+    elif action == "set_role" and role in auth.ROLES:
+        db.set_role(user_id, role)
+        db.revoke_user_sessions(user_id)              # rôle changé -> re-login (cible)
+    db.insert_audit(f"user_{action}", admin["id"], admin["username"],
+                    client_ip(request), _ua(request),
+                    f"cible={target['username']} role={role}")
     return RedirectResponse("/admin/users", status_code=303)
+
+
+@app.post("/admin/users/create")
+async def admin_users_create(request: Request, username: str = Form(...),
+                             password: str = Form(...), role: str = Form("user"),
+                             email: str = Form(""), must_change: str = Form(""),
+                             csrf_token: str = Form(...)):
+    admin, resp = _guard(request, auth.ROLE_ADMIN)
+    if resp:
+        return resp
+
+    def users_page(error: str = "", ok: str = ""):
+        return _render_with_csrf(request, "admin/users.html", {
+            "user": admin, "title": "Comptes", "users": db.list_users(),
+            "roles": auth.ROLES, "error": error, "created": ok})
+
+    if not _check_csrf(request, csrf_token):
+        return users_page("Session expirée, réessayez.")
+    username = username.strip()
+    if not username or role not in auth.ROLES:
+        return users_page("Nom d'utilisateur ou rôle invalide.")
+    if db.get_user_by_username(username):
+        return users_page("Ce nom d'utilisateur est déjà pris.")
+    ok, msg = auth.validate_password_policy(password)
+    if not ok:
+        return users_page(msg)
+    uid = db.create_user(username=username, password_hash=auth.hash_password(password),
+                         role=role, status=auth.STATUS_ACTIVE,
+                         email=email.strip() or None,
+                         must_change_password=(must_change == "on"))
+    db.insert_audit("user_create", admin["id"], admin["username"],
+                    client_ip(request), _ua(request), f"cible={username} role={role}")
+    return users_page(ok=f"Compte « {username} » créé ({role}).")
 
 
 @app.get("/admin/models")
@@ -531,11 +610,11 @@ async def admin_models(request: Request):
     user, resp = _guard(request, auth.ROLE_ADMIN)
     if resp:
         return resp
-    installed = await _installed_models()
     return _render_with_csrf(request, "admin/models.html", {
         "user": user, "title": "Modèles & recherche",
-        "installed": installed, "defaults": appsettings.load_defaults(),
-        "modes": ("hybrid", "dense", "bm25"),
+        "installed": await _installed_models(),
+        "generation_models": await _generation_models(),
+        "defaults": appsettings.load_defaults(),
     })
 
 
@@ -572,6 +651,23 @@ async def admin_logs(request: Request):
     })
 
 
+@app.get("/admin/logs/export.csv")
+async def admin_logs_csv(request: Request):
+    user, resp = _guard(request, auth.ROLE_ADMIN)
+    if resp:
+        return resp
+    buf = io.StringIO()
+    writer = csv.writer(buf, delimiter=";")
+    writer.writerow(["horodatage_utc", "action", "utilisateur", "ip", "user_agent", "detail"])
+    for e in db.list_audit(100000):
+        writer.writerow([e.get("ts", ""), e.get("action", ""), e.get("username") or "",
+                         e.get("ip") or "", e.get("user_agent") or "", e.get("detail") or ""])
+    csv_bytes = "﻿" + buf.getvalue()  # BOM pour Excel (accents corrects)
+    return StreamingResponse(
+        iter([csv_bytes]), media_type="text/csv; charset=utf-8",
+        headers={"Content-Disposition": 'attachment; filename="edgar_audit.csv"'})
+
+
 @app.get("/contribute")
 async def contribute_page(request: Request):
     user, resp = _guard(request, auth.ROLE_CONTRIBUTOR)
@@ -582,53 +678,112 @@ async def contribute_page(request: Request):
     })
 
 
+def _contribute_result(request, user, result):
+    return _render_with_csrf(request, "admin/contribute.html", {
+        "user": user, "title": "Importer des documents",
+        "bases": bases.load_bases(), "result": result})
+
+
 @app.post("/contribute/upload")
 async def contribute_upload(request: Request, base_id: str = Form(...),
-                            csrf_token: str = Form(...), file: UploadFile = File(...)):
+                            csrf_token: str = Form(...),
+                            files: list[UploadFile] = File(...)):
+    """Import d'un ou plusieurs fichiers depuis le navigateur."""
     user, resp = _guard(request, auth.ROLE_CONTRIBUTOR)
     if resp:
         return resp
-    result = {"ok": False, "message": ""}
     base = bases.get_base(base_id)
     if not _check_csrf(request, csrf_token):
-        result["message"] = "Session expirée, réessayez."
-    elif not base:
-        result["message"] = "Base inconnue."
-    else:
-        # Assainissement du nom + confinement dans le dossier de la base.
-        safe_name = sanitize_filename(file.filename or "document")
+        return _contribute_result(request, user, {"ok": False, "message": "Session expirée, réessayez."})
+    if not base:
+        return _contribute_result(request, user, {"ok": False, "message": "Base inconnue."})
+
+    docs_dir = safe_join(settings.DOCUMENTS_DIR, base_id)
+    docs_dir.mkdir(parents=True, exist_ok=True)
+    strategy = base.get("parse_strategy", "fast")
+    indexed_docs, skipped, errors, total_chunks = 0, 0, 0, 0
+    for f in files:
+        if not f.filename:
+            continue
+        safe_name = sanitize_filename(f.filename)
         try:
-            docs_dir = safe_join(settings.DOCUMENTS_DIR, base_id)
-            docs_dir.mkdir(parents=True, exist_ok=True)
             dest = safe_join(docs_dir, safe_name)
-            data = await file.read()
-            dest.write_bytes(data)
-            rep = ingest.ingest_file(base_id, str(dest), file_name=safe_name,
-                                     strategy=base.get("parse_strategy", "fast"))
+            dest.write_bytes(await f.read())
+            rep = ingest.ingest_file(base_id, str(dest), file_name=safe_name, strategy=strategy)
+            if rep.get("skipped"):
+                skipped += 1
+            else:
+                indexed_docs += 1
+                total_chunks += rep.get("indexed", 0)
             db.insert_audit("document_upload", user["id"], user["username"],
                             client_ip(request), _ua(request),
                             f"base={base_id} fichier={safe_name} {rep}")
-            result = {"ok": True, "message": f"« {safe_name} » importé — {rep.get('indexed', 0)} extraits."
-                      if not rep.get("skipped") else f"« {safe_name} » déjà indexé (déduplication)."}
-        except Exception as exc:
-            result["message"] = f"Échec de l'import ({type(exc).__name__})."
-    return _render_with_csrf(request, "admin/contribute.html", {
-        "user": user, "title": "Importer des documents",
-        "bases": bases.load_bases(), "result": result,
-    })
+        except Exception:
+            errors += 1
+    msg = (f"{indexed_docs} document(s) importé(s) ({total_chunks} extraits), "
+           f"{skipped} déjà indexé(s)" + (f", {errors} en échec." if errors else "."))
+    return _contribute_result(request, user, {"ok": errors == 0, "message": msg})
+
+
+@app.post("/contribute/scan")
+async def contribute_scan(request: Request, base_id: str = Form(...),
+                          csrf_token: str = Form(...)):
+    """Ingestion de tout le dossier serveur de la base (fichiers non encore indexés)."""
+    user, resp = _guard(request, auth.ROLE_CONTRIBUTOR)
+    if resp:
+        return resp
+    base = bases.get_base(base_id)
+    if not _check_csrf(request, csrf_token):
+        return _contribute_result(request, user, {"ok": False, "message": "Session expirée, réessayez."})
+    if not base:
+        return _contribute_result(request, user, {"ok": False, "message": "Base inconnue."})
+
+    docs_dir = safe_join(settings.DOCUMENTS_DIR, base_id)
+    if not docs_dir.exists():
+        return _contribute_result(request, user, {"ok": False, "message": "Dossier de la base introuvable."})
+    strategy = base.get("parse_strategy", "fast")
+    indexed_docs, skipped, errors, total_chunks = 0, 0, 0, 0
+    for path in sorted(docs_dir.rglob("*")):
+        if not path.is_file():
+            continue
+        try:
+            rep = ingest.ingest_file(base_id, str(path), file_name=path.name, strategy=strategy)
+            if rep.get("skipped"):
+                skipped += 1
+            else:
+                indexed_docs += 1
+                total_chunks += rep.get("indexed", 0)
+        except Exception:
+            errors += 1
+    db.insert_audit("folder_scan", user["id"], user["username"],
+                    client_ip(request), _ua(request),
+                    f"base={base_id} indexés={indexed_docs} ignorés={skipped} erreurs={errors}")
+    msg = (f"Scan terminé : {indexed_docs} nouveau(x) document(s) ({total_chunks} extraits), "
+           f"{skipped} déjà indexé(s)" + (f", {errors} en échec." if errors else "."))
+    return _contribute_result(request, user, {"ok": errors == 0, "message": msg})
 
 
 # --------------------------------------------------------------------------
 # Santé
 # --------------------------------------------------------------------------
 async def _installed_models() -> list[str]:
-    """Liste des modèles Ollama installés (pour les sélecteurs de LLM)."""
+    """Liste des modèles Ollama installés."""
     try:
         async with httpx.AsyncClient(timeout=5.0) as client:
             r = await client.get(f"{settings.OLLAMA_URL}/api/tags")
         return [m["name"] for m in r.json().get("models", [])]
     except Exception:
         return []
+
+
+# Indices de nom permettant d'exclure les modèles non génératifs (embeddings/rerankers).
+_NON_GEN_HINTS = ("embed", "bge-m3", "bge-large", "reranker", "rerank", "minilm", "e5-")
+
+
+async def _generation_models() -> list[str]:
+    """Modèles de génération (LLM) uniquement — exclut embeddings et rerankers."""
+    return [m for m in await _installed_models()
+            if not any(h in m.lower() for h in _NON_GEN_HINTS)]
 
 
 async def _ping(url: str, path: str) -> dict:

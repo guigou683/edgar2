@@ -17,8 +17,18 @@
 
 <div class="conv-list">
   {% for c in conversations %}
-  <a class="conv-item {% if c.id == conv_id %}active{% endif %}"
-     href="/chat?base={{ base_id }}&conv={{ c.id }}">{{ c.title or "Conversation" }}</a>
+  <div class="conv-item-wrap {% if c.id == conv_id %}active{% endif %}">
+    <a class="conv-item" href="/chat?base={{ base_id }}&conv={{ c.id }}">{{ c.title or "Conversation" }}</a>
+    <form class="conv-del" method="post" action="/conversations/{{ c.id }}/delete"
+          data-confirm="Supprimer définitivement cette conversation ?">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+      <input type="hidden" name="base" value="{{ base_id }}">
+      <button class="conv-del-btn" type="submit" title="Supprimer" aria-label="Supprimer la conversation">
+        <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2">
+          <path d="M3 6h18M8 6V4h8v2m-9 0v14a1 1 0 0 0 1 1h8a1 1 0 0 0 1-1V6M10 11v6M14 11v6"/></svg>
+      </button>
+    </form>
+  </div>
   {% endfor %}
 </div>
 {% endblock %}
@@ -34,65 +44,70 @@
             title="Régler les leviers de recherche">⚙️ Réglages de recherche</button>
   </div>
 
-  <!-- Panneau d'expérimentation : effet immédiat sur la requête suivante -->
   <div class="panel" data-panel hidden>
     <p class="panel-note">Vos réglages sont <b>propres à votre session</b> et priment sur les
-       défauts globaux définis par l'administrateur. Effet immédiat, sans redémarrage.</p>
+       défauts globaux de l'administrateur. Effet immédiat, sans redémarrage.</p>
 
     <div class="panel-grid">
-      <label title="Hybride = embeddings + BM25 fusionnés (RRF). Vectoriel = embeddings seuls. BM25 = lexical seul.">
-        Mode de recherche
+      <label>
+        Mode de recherche {{ ui.info("Hybride combine sens (IA) et mots-clés : meilleur rappel. IA seule = compréhension du sens. Lexicale = correspondance exacte des termes.") }}
         <select data-p="mode">
-          <option value="hybrid" {% if panel.mode == 'hybrid' %}selected{% endif %}>Hybride (dense + BM25)</option>
-          <option value="dense"  {% if panel.mode == 'dense'  %}selected{% endif %}>Vectoriel seul</option>
-          <option value="bm25"   {% if panel.mode == 'bm25'   %}selected{% endif %}>BM25 seul</option>
+          <option value="hybrid" {% if panel.mode == 'hybrid' %}selected{% endif %}>Hybride (IA + Lexicale)</option>
+          <option value="dense"  {% if panel.mode == 'dense'  %}selected{% endif %}>IA (sémantique)</option>
+          <option value="bm25"   {% if panel.mode == 'bm25'   %}selected{% endif %}>Lexicale (mots-clés)</option>
         </select>
       </label>
 
-      <label title="Modèle de génération local.">
-        Modèle (LLM)
+      {% if is_admin %}
+      <label>
+        Modèle (LLM) {{ ui.info("Modèle de génération. Un plus gros modèle = réponses potentiellement meilleures mais plus lentes et plus gourmandes en VRAM. Réservé aux administrateurs.") }}
         <select data-p="llm_model">
-          {% for m in installed_models %}
+          {% for m in generation_models %}
           <option value="{{ m }}" {% if m == panel.llm_model %}selected{% endif %}>{{ m }}</option>
           {% endfor %}
-          {% if not installed_models %}<option value="mistral:7b">mistral:7b</option>{% endif %}
+          {% if not generation_models %}<option value="mistral:7b">mistral:7b</option>{% endif %}
         </select>
       </label>
+      {% endif %}
 
-      <label class="switch" title="Reformule la question en plusieurs variantes avant la recherche.">
+      <label class="switch">
         <input type="checkbox" data-p="use_reprompt" {% if panel.use_reprompt %}checked{% endif %}>
-        Re-prompt multi-requêtes
+        Re-prompt multi-requêtes {{ ui.info("Reformule la question en plusieurs variantes avant de chercher : améliore le rappel, mais rallonge la recherche (un appel au LLM).") }}
       </label>
-      <label title="Nombre de reformulations générées.">
+      <label>
         Reformulations : <span data-out="n_reformulations">{{ panel.n_reformulations }}</span>
+        {{ ui.info("Nombre de variantes générées. Plus élevé = meilleure couverture mais recherche plus longue.") }}
         <input type="range" min="1" max="5" step="1" data-p="n_reformulations" value="{{ panel.n_reformulations }}">
       </label>
 
-      <label class="switch" title="Ré-ordonne finement les candidats avec le cross-encoder.">
+      <label class="switch">
         <input type="checkbox" data-p="use_rerank" {% if panel.use_rerank %}checked{% endif %}>
-        Reranking (cross-encoder)
+        Reranking {{ ui.info("Ré-ordonne finement les passages avec un modèle dédié (CPU). Améliore nettement la pertinence, mais ajoute quelques secondes.") }}
       </label>
-      <label title="Nombre de passages conservés après reranking.">
-        Top-k conservés : <span data-out="top_k">{{ panel.top_k }}</span>
+      <label>
+        Passages conservés (top-k) : <span data-out="top_k">{{ panel.top_k }}</span>
+        {{ ui.info("Nombre de passages transmis au LLM. Plus élevé = plus de contexte (réponse plus complète) mais plus de bruit possible et génération plus lente.") }}
         <input type="range" min="1" max="30" step="1" data-p="top_k" value="{{ panel.top_k }}">
       </label>
 
-      <label title="Nombre de candidats récupérés avant reranking.">
-        Candidats récupérés : <span data-out="k_candidates">{{ panel.k_candidates }}</span>
+      <label>
+        Candidats récupérés (k) : <span data-out="k_candidates">{{ panel.k_candidates }}</span>
+        {{ ui.info("Nombre de passages récupérés avant reranking. Plus élevé = meilleur rappel mais recherche/reranking plus longs.") }}
         <input type="range" min="1" max="100" step="1" data-p="k_candidates" value="{{ panel.k_candidates }}">
       </label>
-      <label title="Sous ce score, un passage est écarté. Plus haut = refus d'inventer plus strict.">
+      <label>
         Seuil de pertinence : <span data-out="threshold">{{ panel.threshold }}</span>
+        {{ ui.info("En dessous de ce score, un passage est écarté. Plus haut = plus strict (refuse plus souvent de répondre, mais moins d'inventions). Plus bas = plus permissif.") }}
         <input type="range" min="0" max="1" step="0.05" data-p="threshold" value="{{ panel.threshold }}">
       </label>
 
-      <label class="switch" title="Renvoie uniquement les extraits pertinents, sans génération.">
+      <label class="switch">
         <input type="checkbox" data-p="search_mode" {% if panel.search_mode %}checked{% endif %}>
-        Mode recherche (extraits seuls)
+        Mode recherche {{ ui.info("Renvoie uniquement les extraits pertinents, sans génération : instantané et zéro risque d'invention.") }}
       </label>
-      <label class="switch" title="Affiche les mots-clés extraits sous chaque source.">
+      <label class="switch">
         <input type="checkbox" data-show-keywords>
-        Afficher les mots-clés des sources
+        Afficher les mots-clés {{ ui.info("Affiche sous chaque source les mots-clés extraits à l'indexation (n'affecte pas la recherche).") }}
       </label>
     </div>
 

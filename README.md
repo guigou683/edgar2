@@ -18,9 +18,10 @@ Trois services Docker Compose :
 - **ollama** — embeddings dense + génération (GPU si présent).
 - **qdrant** — base vectorielle (vecteurs nommés `dense` + `sparse`).
 - **app** — application EDGAR (FastAPI), reranking sur CPU.
+- **nginx** — reverse proxy **HTTPS** (terminaison TLS, transmet l'IP réelle du client).
 
-Ports décalés pour cohabiter avec la v1 : app **8800**, qdrant **7333**, ollama **11435**.
-Images alignées sur la v1 (Ollama `0.30.9`, Qdrant `v1.12.4`).
+Ports (via nginx) : **8443** (HTTPS), **8800** (HTTP → redirige HTTPS) ; qdrant **7333**,
+ollama **11435**. Images alignées sur la v1 (Ollama `0.30.9`, Qdrant `v1.12.4`).
 
 ## Prérequis hôte (non embarquables)
 - Docker + Docker Compose.
@@ -30,9 +31,17 @@ Images alignées sur la v1 (Ollama `0.30.9`, Qdrant `v1.12.4`).
 ```bash
 cp .env.example .env          # ajuster EDGAR_SECRET_KEY notamment
 docker compose up --build
-# Application : http://localhost:8800
-# Santé       : http://localhost:8800/healthz
+# Application : https://localhost:8443   (certificat auto-signé -> avertissement au 1er accès)
+# Santé       : https://localhost:8443/healthz
 ```
+**HTTPS sans DNS** : un certificat auto-signé est généré au 1er démarrage. En production,
+émettez-le aux couleurs du serveur : `bash scripts/gen_cert.sh <IP-ou-nom>` (ou renseignez
+`EDGAR_CERT_CN`/`EDGAR_CERT_SAN` dans `.env`). Installez le certificat (ou la CA interne)
+dans le magasin de confiance des postes clients pour supprimer l'avertissement navigateur.
+
+> **IP réelles dans les journaux** : sur un serveur **Linux**, nginx transmet la vraie IP
+> des postes clients (X-Forwarded-For). Sur Docker Desktop (Windows/Mac), la VM masque l'IP
+> (dev uniquement).
 
 ## Hors-ligne
 Tous les artefacts (images, modèles, polices, JS/CSS) sont pré-téléchargés puis

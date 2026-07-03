@@ -50,14 +50,29 @@ services:
       - TRANSFORMERS_OFFLINE=1
       - OLLAMA_URL=http://ollama:11434
       - QDRANT_URL=http://qdrant:6333
+      - EDGAR_TLS=1                            # cookies Secure (servi derrière nginx HTTPS)
     volumes:
       - ./data:/app/data                       # SQLite, bases.json, settings.json
       - ./documents:/app/documents             # corpus, un sous-dossier par base
       - ./scripts:/app/scripts:ro              # outils d'exploitation (bootstrap, etc.)
+    # Pas de port publié : l'app n'est joignable que par nginx (réseau interne).
+    restart: unless-stopped
+
+  nginx:
+    build: ./nginx
+    depends_on:
+      - app
     ports:
-      - "${APP_PORT:-8800}:8000"
+      - "${HTTPS_PORT:-8443}:443"              # HTTPS
+      - "${HTTP_PORT:-8800}:80"                # HTTP -> redirection HTTPS
+    environment:
+      - EDGAR_CERT_CN=${EDGAR_CERT_CN:-localhost}
+      - EDGAR_CERT_SAN=${EDGAR_CERT_SAN:-DNS:localhost,IP:127.0.0.1}
+    volumes:
+      - edgar2_certs:/certs                    # certificat auto-signé (généré au 1er démarrage)
     restart: unless-stopped
 
 volumes:
   edgar2_ollama:
   edgar2_qdrant:
+  edgar2_certs:

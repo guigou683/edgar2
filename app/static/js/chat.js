@@ -119,11 +119,21 @@ async function streamChat(chat, question) {
   const am = el("div", "msg msg-assistant");
   const abubble = el("div", "bubble");
   const md = el("div", "md-content");
-  const cursor = el("span", "typing", "▍");
-  abubble.appendChild(md); abubble.appendChild(cursor);
+  const thinking = el("span", "thinking-text");
+  abubble.appendChild(md); abubble.appendChild(thinking);
   am.appendChild(abubble);
   messages.appendChild(am);
   messages.scrollTop = messages.scrollHeight;
+
+  // « Réflexion en cours.. » écrit caractère par caractère, puis ▍ clignotant.
+  const full = "Réflexion en cours..";
+  let ci = 0;
+  const typer = setInterval(() => {
+    if (ci < full.length) { ci++; thinking.textContent = full.slice(0, ci); }
+    else { clearInterval(typer); thinking.innerHTML = full + '<span class="blink">▍</span>'; }
+  }, 45);
+  let thinkingDone = false;
+  const clearThinking = () => { if (!thinkingDone) { thinkingDone = true; clearInterval(typer); thinking.remove(); } };
 
   let meta = null, buffer = "";
   const body = {
@@ -161,10 +171,12 @@ async function streamChat(chat, question) {
           meta = payload;
           if (payload.conversation_id) chat.dataset.convId = payload.conversation_id;
         } else if (event === "token") {
+          clearThinking();
           buffer += payload.t || "";
           md.textContent = buffer;
           messages.scrollTop = messages.scrollHeight;
         } else if (event === "error") {
+          clearThinking();
           buffer += "\n\n_" + (payload.message || "Erreur.") + "_";
           md.textContent = buffer;
         } else if (event === "done") {
@@ -176,7 +188,7 @@ async function streamChat(chat, question) {
     md.textContent = "Erreur de communication avec le serveur.";
   }
 
-  cursor.remove();
+  clearThinking();
   if (meta && meta.search_mode) md.innerHTML = "<em>Mode recherche : extraits pertinents ci-dessous.</em>";
   else renderMarkdown(md, buffer);
   if (meta) {

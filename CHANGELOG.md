@@ -16,6 +16,34 @@ réelles sur un volume important de fichiers**.
 - Pistes : enrichissement LLM des mots-clés à l'ingestion (option par base),
   viewer PDF inline plus poussé, optimisations mémoire/VRAM.
 
+## [1.1.0] — 2026-07-03 — améliorations UX, admin & HTTPS *(pré-release)*
+
+### Ajouté
+- **HTTPS via reverse proxy nginx** : terminaison TLS, redirection HTTP→HTTPS,
+  **certificat auto-signé** généré au démarrage (sans DNS), cookies `Secure`,
+  transmission de l'**IP réelle** du client (X-Forwarded-For). Script
+  `scripts/gen_cert.sh <IP>` pour la prod ; nginx ajouté à la chaîne offline.
+- **Panneau ⚙️** : sélection du LLM **réservée aux admins** (les autres rôles
+  gardent le panneau) ; modèles de génération **filtrés** (embeddings/rerankers
+  exclus) ; libellés **Hybride / IA / Lexicale** ; **info-bulles « i »** expliquant
+  l'effet de chaque réglage.
+- **Suppression de conversation** (icône au survol + confirmation).
+- **Ingestion** : import **multi-fichiers** + **scan du dossier serveur** de la base.
+- **Comptes** : **création de compte par l'admin** ; lien **« ← Conversations »**
+  depuis les pages Admin/Import.
+- **Journaux** : **export CSV**.
+- Indicateur **« Réflexion en cours.. »** animé pendant la recherche.
+
+### Corrigé
+- **Changement de rôle qui déconnectait l'admin** : la révocation ne touche plus
+  l'admin qui agit ; auto-suspension / auto-rétrogradation **bloquées** (anti-verrouillage).
+- Chevauchement des actions **« Suspendre »** / menu **Rôle** dans la page Comptes.
+
+### Modifié
+- Inscription : **courriel obligatoire**.
+- Politique de mot de passe : suppression de la limite « 128 max » affichée
+  (garde-fou interne discret conservé).
+
 ## [1.0.0] — 2026-07-02 — première version stable
 
 Application complète : RAG **hybride, souverain, 100 % hors-ligne**, interface type

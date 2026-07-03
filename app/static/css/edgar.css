@@ -238,6 +238,47 @@ a.btn-new { display: block; text-align: center; text-decoration: none; }
 .btn-mini:hover { background: var(--marine); }
 .help { color: var(--text-muted); font-size: 12px; }
 
+/* --- Lien retour & entête de carte --- */
+.admin-back { display: inline-block; margin-bottom: 8px; color: var(--text-muted); text-decoration: none; font-size: 13px; }
+.admin-back:hover { color: var(--or); }
+.card-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+a.btn-mini { text-decoration: none; display: inline-block; }
+
+/* --- Conversations : suppression au survol --- */
+.conv-item-wrap { position: relative; display: flex; align-items: center; border-radius: 8px; }
+.conv-item-wrap .conv-item { flex: 1; min-width: 0; }
+.conv-item-wrap:hover, .conv-item-wrap.active { background: var(--bg-elev); }
+.conv-item-wrap:hover .conv-item, .conv-item-wrap.active .conv-item { color: var(--text); }
+.conv-del { margin: 0; display: flex; }
+.conv-del-btn { display: none; background: none; border: none; color: var(--text-muted); cursor: pointer; padding: 4px 8px; align-items: center; }
+.conv-item-wrap:hover .conv-del-btn { display: inline-flex; }
+.conv-del-btn:hover { color: #f3b6bd; }
+
+/* --- Info « i » + info-bulle --- */
+.info-i {
+  display: inline-flex; align-items: center; justify-content: center;
+  width: 15px; height: 15px; border-radius: 50%; border: 1px solid var(--text-muted);
+  color: var(--text-muted); font-size: 10px; font-style: italic; cursor: help;
+  position: relative; vertical-align: middle;
+}
+.info-i:hover, .info-i:focus { color: var(--text); border-color: var(--marine-acc); outline: none; }
+.info-i:hover::after, .info-i:focus::after {
+  content: attr(data-tip); position: absolute; left: 50%; bottom: 150%; transform: translateX(-50%);
+  width: 240px; background: #0b0d12; color: var(--text); border: 1px solid var(--border);
+  border-radius: 8px; padding: 8px 10px; font-size: 12px; font-style: normal; line-height: 1.4;
+  z-index: 40; white-space: normal; box-shadow: 0 4px 14px rgba(0,0,0,.45);
+}
+
+/* --- Comptes : actions bien séparées --- */
+.user-actions { display: flex; flex-direction: column; gap: 8px; align-items: flex-start; }
+.role-form { display: flex; gap: 6px; align-items: center; }
+.role-form select { background: var(--bg); color: var(--text); border: 1px solid var(--border); border-radius: 6px; padding: 5px 8px; font-size: 12px; }
+.user-actions form { margin: 0; }
+
+/* --- Indicateur « Réflexion en cours » --- */
+.thinking-text { color: var(--text-muted); font-style: italic; }
+.blink { color: var(--or); animation: blink 1s step-start infinite; }
+
 /* --- Bouton menu (petit écran) --- */
 .sidebar-toggle {
   display: none; position: fixed; top: 12px; left: 12px; z-index: 20;

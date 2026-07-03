@@ -12,6 +12,7 @@ docker save \
   ollama/ollama:0.30.9 \
   qdrant/qdrant:v1.12.4 \
   edgar2-app:latest \
+  edgar2-nginx:latest \
   -o "$OUT/images.tar"
 
 echo "[2/3] Archivage du volume Ollama (modèles pré-téléchargés)…"

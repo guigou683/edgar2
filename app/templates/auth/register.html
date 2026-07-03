@@ -12,8 +12,8 @@
     <label>Nom d'utilisateur
       <input type="text" name="username" required autofocus>
     </label>
-    <label>Courriel (facultatif)
-      <input type="email" name="email">
+    <label>Courriel
+      <input type="email" name="email" required>
     </label>
     <label>Mot de passe
       <input type="password" name="password" required>
@@ -21,7 +21,7 @@
     <label>Confirmer le mot de passe
       <input type="password" name="confirm" required>
     </label>
-    <p class="auth-hint">12 à 128 caractères, avec majuscule, minuscule, chiffre et caractère spécial.</p>
+    <p class="auth-hint">Au moins 12 caractères, avec majuscule, minuscule, chiffre et caractère spécial.</p>
     <button class="btn-primary" type="submit">Envoyer la demande</button>
     {% endif %}
 

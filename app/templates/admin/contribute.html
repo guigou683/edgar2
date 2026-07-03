@@ -1,16 +1,18 @@
 {% extends "base.html" %}
 {% block content %}
 <div class="admin">
+  <a class="admin-back" href="/chat">← Conversations</a>
   <h1>Importer des documents</h1>
-  <p class="help">Ajoutez un document à une base ; il est analysé, découpé, taggé et indexé.
-     Formats : PDF, DOCX, MD, HTML, PPTX, XLSX, TXT, images (OCR).</p>
+  <p class="help">Formats : PDF, DOCX, MD, HTML, PPTX, XLSX, TXT, images (OCR).
+     Chaque document est analysé, découpé, taggé puis indexé (déduplication automatique).</p>
 
   {% if result %}
   <p class="alert {{ 'alert-ok' if result.ok else 'alert-error' }}">{{ result.message }}</p>
   {% endif %}
 
+  {% if bases %}
   <div class="admin-card">
-    {% if bases %}
+    <h2>Ajouter des fichiers (navigateur)</h2>
     <form class="admin-form" method="post" action="/contribute/upload" enctype="multipart/form-data">
       <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
       <label>Base de destination
@@ -18,12 +20,28 @@
           {% for b in bases %}<option value="{{ b.id }}">{{ b.name }} ({{ b.parse_strategy }})</option>{% endfor %}
         </select>
       </label>
-      <label>Fichier<input type="file" name="file" required></label>
+      <label>Fichiers (sélection multiple possible)<input type="file" name="files" multiple required></label>
       <div><button class="btn-mini" type="submit">Importer et indexer</button></div>
     </form>
-    {% else %}
-    <p class="help">Aucune base disponible. Un administrateur doit d'abord en créer une.</p>
-    {% endif %}
   </div>
+
+  <div class="admin-card">
+    <h2>Ingérer le dossier de la base (serveur)</h2>
+    <p class="help">Indexe tous les fichiers déjà présents dans le dossier de la base sur le
+       serveur (dépôt par disque ou partage réseau), en ignorant ceux déjà indexés.
+       Adapté aux gros volumes.</p>
+    <form class="admin-form" method="post" action="/contribute/scan">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+      <label>Base à scanner
+        <select name="base_id">
+          {% for b in bases %}<option value="{{ b.id }}">{{ b.name }} ({{ b.parse_strategy }})</option>{% endfor %}
+        </select>
+      </label>
+      <div><button class="btn-mini" type="submit">Scanner et indexer le dossier</button></div>
+    </form>
+  </div>
+  {% else %}
+  <p class="help">Aucune base disponible. Un administrateur doit d'abord en créer une.</p>
+  {% endif %}
 </div>
 {% endblock %}

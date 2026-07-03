@@ -24,14 +24,16 @@
       <label>Modèle de génération (LLM)
         <select name="llm_model">
           {% set current = defaults.get('llm_model', 'mistral:7b') %}
-          {% for m in installed %}<option value="{{ m }}" {% if m == current %}selected{% endif %}>{{ m }}</option>{% endfor %}
-          {% if not installed %}<option value="mistral:7b">mistral:7b</option>{% endif %}
+          {% for m in generation_models %}<option value="{{ m }}" {% if m == current %}selected{% endif %}>{{ m }}</option>{% endfor %}
+          {% if not generation_models %}<option value="mistral:7b">mistral:7b</option>{% endif %}
         </select>
       </label>
       <label>Mode de recherche
+        {% set cmode = defaults.get('mode', 'hybrid') %}
         <select name="mode">
-          {% set cmode = defaults.get('mode', 'hybrid') %}
-          {% for m in modes %}<option value="{{ m }}" {% if m == cmode %}selected{% endif %}>{{ m }}</option>{% endfor %}
+          <option value="hybrid" {% if cmode == 'hybrid' %}selected{% endif %}>Hybride (IA + Lexicale)</option>
+          <option value="dense"  {% if cmode == 'dense'  %}selected{% endif %}>IA (sémantique)</option>
+          <option value="bm25"   {% if cmode == 'bm25'   %}selected{% endif %}>Lexicale (mots-clés)</option>
         </select>
       </label>
       <label class="inline"><input type="checkbox" name="use_reprompt" {% if defaults.get('use_reprompt', true) %}checked{% endif %}> Re-prompt multi-requêtes</label>

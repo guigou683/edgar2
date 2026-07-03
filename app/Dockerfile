@@ -42,4 +42,6 @@ RUN mkdir -p /app/models/nltk /app/models/hf && \
 COPY . .
 
 EXPOSE 8000
-CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8000"]
+# --proxy-headers : fait confiance à X-Forwarded-* transmis par nginx (IP réelle, schéma).
+CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8000", \
+     "--proxy-headers", "--forwarded-allow-ips", "*"]

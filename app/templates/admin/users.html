@@ -5,6 +5,28 @@
   <h1>Comptes</h1>
   {{ ui.admin_nav('users') }}
 
+  {% if error %}<p class="alert alert-error">{{ error }}</p>{% endif %}
+  {% if created %}<p class="alert alert-ok">{{ created }}</p>{% endif %}
+
+  <div class="admin-card">
+    <h2>Créer un compte</h2>
+    <p class="help">Le compte est créé directement actif (pas de validation).</p>
+    <form class="admin-form" method="post" action="/admin/users/create" autocomplete="off">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+      <label>Nom d'utilisateur<input type="text" name="username" required></label>
+      <label>Courriel (facultatif)<input type="email" name="email"></label>
+      <label>Mot de passe<input type="password" name="password" required></label>
+      <p class="help">Au moins 12 caractères, avec majuscule, minuscule, chiffre et caractère spécial.</p>
+      <label>Rôle
+        <select name="role">
+          {% for r in roles %}<option value="{{ r }}">{{ r }}</option>{% endfor %}
+        </select>
+      </label>
+      <label class="inline"><input type="checkbox" name="must_change"> Forcer le changement de mot de passe à la 1ʳᵉ connexion</label>
+      <div><button class="btn-mini" type="submit">Créer le compte</button></div>
+    </form>
+  </div>
+
   <div class="admin-card">
     <h2>Utilisateurs</h2>
     <p class="help">Validez les comptes en attente, ajustez les rôles ou suspendez un accès.
@@ -21,7 +43,7 @@
             {% if u.locked_until %}<span class="help">verrouillé</span>{% endif %}
           </td>
           <td>
-            <div class="row">
+            <div class="user-actions">
               {% if u.status != 'active' %}
               <form method="post" action="/admin/users/action">
                 <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
@@ -38,7 +60,7 @@
                 <button class="btn-mini danger" type="submit">Suspendre</button>
               </form>
               {% endif %}
-              <form method="post" action="/admin/users/action" class="row">
+              <form method="post" action="/admin/users/action" class="role-form">
                 <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
                 <input type="hidden" name="user_id" value="{{ u.id }}">
                 <input type="hidden" name="action" value="set_role">

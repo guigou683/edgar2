@@ -311,6 +311,12 @@ def add_message(conversation_id: int, role: str, content: str,
         return int(cur.lastrowid)
 
 
+def delete_conversation(conv_id: int) -> None:
+    """Supprime une conversation (les messages suivent via ON DELETE CASCADE)."""
+    with get_conn() as conn:
+        conn.execute("DELETE FROM conversations WHERE id = ?", (conv_id,))
+
+
 def list_messages(conversation_id: int) -> list[dict[str, Any]]:
     with get_conn() as conn:
         rows = conn.execute(
