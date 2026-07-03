@@ -27,6 +27,8 @@ for i in $(seq 1 30); do
   docker compose exec -T app python -c "import socket;socket.gethostbyname('ollama');socket.gethostbyname('qdrant')" 2>/dev/null && break
   sleep 2
 done
+echo "  -- nginx HTTPS (certificat auto-signé généré hors-ligne) --"
+docker compose exec -T app python -c "import httpx; r=httpx.get('https://nginx/healthz', verify=False, timeout=10); print('  nginx HTTPS ->', r.status_code)"
 echo "  -- test d'ingestion (parsing/OCR -> embeddings -> hybride) --"
 docker compose exec -T app python - < tests/test_ingest.py
 echo "  -- test de retrieval (multi-query -> rerank -> seuil -> génération) --"
