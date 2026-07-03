@@ -47,13 +47,26 @@ dans le magasin de confiance des postes clients pour supprimer l'avertissement n
 Tous les artefacts (images, modèles, polices, JS/CSS) sont pré-téléchargés puis
 transférés. Aucun CDN. `HF_HUB_OFFLINE=1`/`TRANSFORMERS_OFFLINE=1` au runtime.
 
-**Export (poste connecté) :**
+**Paquet d'installation complet (machine cible SANS Docker) — recommandé :**
 ```bash
-docker compose up -d --build          # construit l'image app
+bash scripts/prepare_offline_install.sh          # interactif : demande la cible
+#   ou : TARGET=debian GPU=yes bash scripts/prepare_offline_install.sh
+#   aperçu sans rien télécharger : ... --dry-run
+```
+Prépare `edgar2_offline_bundle/` avec **tout** le nécessaire selon la cible
+(Windows / Debian-Ubuntu / RHEL-Rocky-Alma-Fedora) : **Docker lui-même** (Docker
+Desktop ou binaires statiques Linux), **NVIDIA Container Toolkit** (si GPU), les
+**images**, les **modèles Ollama**, le **code + assets**, un **installeur Linux**,
+un **guide `INSTALL.md`** et les **sommes SHA256**. Le pilote NVIDIA reste à
+récupérer manuellement (dépend du GPU/OS).
+
+**Export léger (machine cible qui a DÉJÀ Docker) :**
+```bash
+docker compose up -d --build          # construit les images
 bash scripts/pull_models.sh           # bge-m3, mistral:7b, qwen2.5:7b -> volume
 bash scripts/export_offline.sh        # -> ./offline_bundle (images, modèles, code)
 ```
-Transférer `offline_bundle/` puis suivre `offline_bundle/IMPORT.md` sur le poste cible.
+Transférer le dossier puis suivre `INSTALL.md` / `IMPORT.md` sur le poste cible.
 
 **Vérification (`scripts/verify_offline.sh`) — validée :**
 - Partie A : BM25 (FastEmbed) et reranker (bge-reranker-v2-m3) chargés sous

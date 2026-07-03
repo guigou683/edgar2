@@ -26,3 +26,7 @@ hf_cache/
 Thumbs.db
 .idea/
 .vscode/
+
+# Paquets d'installation hors-ligne (volumineux, non versionnés)
+/edgar2_offline_bundle/
+/offline_bundle/
