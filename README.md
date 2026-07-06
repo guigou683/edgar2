@@ -165,18 +165,9 @@ edgar2/
 
 ---
 
-## Développement
-
-Les **templates** (`app/templates`) et **assets** (`app/static`) sont montés à chaud :
-éditer un `.html` puis recharger la page (F5) ; pour le CSS/JS, recharger en **Ctrl+F5**
-(ou `docker compose restart app`). Les changements de **code Python** nécessitent
-`docker compose build app && docker compose up -d app`.
-
----
-
 ## Crédits
 
-Développé par le **Premier-maître Guillaume Marzo** et le **Premier-maître Remy Naso**
+Développé par le **guigou6** et **CoewZelyr**
 — page « À propos » dans l'application.
 
-© Marine nationale 2026 — Tous droits réservés · Usage interne Marine nationale.
+© Marine nationale 2026 — Tous droits réservés.
