@@ -1,122 +1,182 @@
 # EDGAR v2 — Exploration de Documentation Guidée par Agent de Raisonnement
 
-Système **RAG auto-hébergé et 100 % hors-ligne** pour interroger de la
-documentation technique et obtenir des réponses **synthétiques, en français,
-sourcées et vérifiables**. Réécriture *from scratch* de la v1.
+Système **RAG auto-hébergé, souverain et 100 % hors-ligne** : interroger de la
+documentation technique et obtenir des réponses **en français, synthétiques,
+sourcées et vérifiables**. Aucune donnée ne sort du réseau local.
 
-> ⚠️ Projet en construction **incrémentale**. État actuel : **brique 1 — socle web**
-> (FastAPI démarre, `/static` monté, `/healthz` vérifie Ollama + Qdrant).
+> Version courante : **1.2.0** — voir [CHANGELOG.md](CHANGELOG.md).
 
-## Évolutions v2 (vs v1)
-1. Recherche **hybride** dense (bge-m3) + **BM25**, fusion **RRF** native Qdrant.
-2. **Re-prompt multi-requêtes** : reformulations LLM avant recherche.
-3. **Tagging** des chunks par mots-clés (YAKE + enrichissement LLM optionnel).
-4. **Interface web sur-mesure** (FastAPI + Jinja2 + HTMX + JS/CSS vanilla), look OpenWebUI.
+---
+
+## Présentation
+
+EDGAR indexe des documents (PDF, DOCX, MD, HTML, PPTX, XLSX, TXT, images) dans des
+**bases cloisonnées**, puis répond aux questions à partir de ces documents
+uniquement. Chaque réponse cite ses **sources** (fichier · page · section) et,
+hors corpus, EDGAR répond explicitement « information non trouvée » plutôt que
+d'inventer.
+
+Pipeline d'interrogation : reformulation multi-requêtes → recherche **hybride**
+(sémantique *bge-m3* + lexicale *BM25*, fusion RRF) → **reranking** (cross-encoder
+ONNX) → **seuil de pertinence** → génération en streaming avec citations.
+
+---
 
 ## Architecture
-Trois services Docker Compose :
-- **ollama** — embeddings dense + génération (GPU si présent).
-- **qdrant** — base vectorielle (vecteurs nommés `dense` + `sparse`).
-- **app** — application EDGAR (FastAPI), reranking sur CPU.
-- **nginx** — reverse proxy **HTTPS** (terminaison TLS, transmet l'IP réelle du client).
 
-Ports (via nginx) : **8443** (HTTPS), **8800** (HTTP → redirige HTTPS) ; qdrant **7333**,
-ollama **11435**. Images alignées sur la v1 (Ollama `0.30.9`, Qdrant `v1.12.4`).
+Quatre services conteneurisés (Docker Compose) :
 
-## Prérequis hôte (non embarquables)
-- Docker + Docker Compose.
-- Pour le GPU : pilote NVIDIA + **NVIDIA Container Toolkit**.
+| Service | Rôle |
+|---|---|
+| **nginx** | Reverse proxy **HTTPS** (terminaison TLS, transmet l'IP réelle du client) |
+| **app** | Application EDGAR (FastAPI) : API, SSE, reranking sur CPU |
+| **ollama** | Modèles : embeddings (GPU si présent, CPU sinon) et génération |
+| **qdrant** | Base vectorielle (vecteurs nommés `dense` + `sparse`) |
 
-## Lancement
+**Modèles** :
+- Embeddings : **bge-m3** (1024 dim) — via Ollama.
+- Reranking : **jinaai/jina-reranker-v2-base-multilingual** (ONNX, CPU, multilingue) — bundlé dans l'image.
+- Génération : **mistral:7b** (par défaut) ou **qwen2.5:7b** — via Ollama.
+
+**Ports** (via nginx) : `8443` (HTTPS) · `8800` (HTTP → redirige HTTPS) ·
+`7333` (Qdrant) · `11435` (Ollama). **Données sur disque** (bind mounts) :
+`./data` (SQLite, config), `./documents` (corpus), `./ollama` (modèles),
+`./qdrant` (index).
+
+---
+
+## Fonctionnalités
+
+- **Chat** en streaming token par token, rendu Markdown, coloration de code, bloc
+  **Sources** dépliable, **aperçu PDF** positionné sur la page citée, téléchargement.
+- **Multi-bases** cloisonnées (un « chatbot » par base), stratégie de parsing par base.
+- **Panneau de réglages** (⚙️) par session : préréglages **⚡ Rapide / 🎯 Précis** et
+  leviers fins (mode hybride/IA/lexicale, re-prompt, reranking, top-k, seuil, etc.),
+  avec info-bulles ; défauts globaux réglables par l'admin.
+- **Gestion des documents** : recherche filtrée à la frappe et consultation (tous les
+  rôles) ; import (fichiers ou dossier serveur) **en tâche de fond** avec progression
+  dynamique, raison précise des échecs et choix de stratégie (rapide / OCR) ;
+  suppression, ré-analyse, relance des échecs, statistiques (contributeur / admin).
+- **Administration** : santé du système, **supervision GPU/CPU** (VRAM allouée par
+  modèle), gestion des bases, des comptes et des rôles, réglages globaux, journaux
+  d'audit (export CSV).
+- **Sécurité ANSSI** (voir plus bas) et **HTTPS** (certificat auto-signé, sans DNS).
+- **100 % hors-ligne** : aucun accès réseau au runtime.
+
+---
+
+## Prérequis
+
+- **Docker** + **Docker Compose**.
+- GPU **optionnel** : pilote NVIDIA + NVIDIA Container Toolkit (sinon exécution CPU,
+  plus lente). Fonctionne confortablement sur un GPU de 8 Go de VRAM.
+
+---
+
+## Installation & lancement
+
 ```bash
-cp .env.example .env          # ajuster EDGAR_SECRET_KEY notamment
-docker compose up --build
-# Application : https://localhost:8443   (certificat auto-signé -> avertissement au 1er accès)
-# Santé       : https://localhost:8443/healthz
+cp .env.example .env            # ajuster EDGAR_SECRET_KEY (secret de session)
+docker compose up -d --build
 ```
-**HTTPS sans DNS** : un certificat auto-signé est généré au 1er démarrage. En production,
-émettez-le aux couleurs du serveur : `bash scripts/gen_cert.sh <IP-ou-nom>` (ou renseignez
-`EDGAR_CERT_CN`/`EDGAR_CERT_SAN` dans `.env`). Installez le certificat (ou la CA interne)
-dans le magasin de confiance des postes clients pour supprimer l'avertissement navigateur.
 
-> **IP réelles dans les journaux** : sur un serveur **Linux**, nginx transmet la vraie IP
-> des postes clients (X-Forwarded-For). Sur Docker Desktop (Windows/Mac), la VM masque l'IP
-> (dev uniquement).
+Puis, une seule fois :
 
-## Hors-ligne
+```bash
+# Créer le premier administrateur (mot de passe forcé au 1er login)
+docker compose exec app python scripts/bootstrap_admin.py
+
+# (Production) certificat aux couleurs du serveur
+bash scripts/gen_cert.sh <IP-ou-nom-du-serveur>
+```
+
+Accès : **https://<hôte>:8443**
+
+> **HTTPS sans DNS** : un certificat **auto-signé** est généré au premier démarrage
+> (avertissement navigateur au premier accès). Installez le certificat (ou la CA
+> interne) dans le magasin de confiance des postes clients pour le supprimer.
+> Sur un serveur **Linux**, nginx journalise les **vraies IP** des postes clients.
+
+---
+
+## Utilisation
+
+- **Rôles** : *Utilisateur* (chat + consultation des documents), *Contributeur*
+  (+ import et gestion des documents), *Administrateur* (+ bases, comptes, système).
+  L'inscription est libre mais un administrateur valide chaque compte.
+- **Poser une question** : choisir une base, saisir la question ; la réponse arrive en
+  streaming avec ses sources. Le **mode recherche** renvoie les extraits sans génération.
+- **Importer** : page « Importer des documents » — fichiers depuis le navigateur ou
+  scan du dossier serveur de la base ; la progression s'affiche en direct.
+- **Gérer** : page « Documents » — rechercher, consulter, supprimer, ré-analyser (OCR).
+
+---
+
+## Fonctionnement hors-ligne
+
 Tous les artefacts (images, modèles, polices, JS/CSS) sont pré-téléchargés puis
-transférés. Aucun CDN. `HF_HUB_OFFLINE=1`/`TRANSFORMERS_OFFLINE=1` au runtime.
+transférés. Aucun CDN ; `HF_HUB_OFFLINE=1` au runtime. La préparation se fait en
+deux temps sur un **poste connecté** :
 
-La préparation hors-ligne se fait en **deux temps** :
-
-**1. Docker + ses dépendances** (si la machine cible n'a pas encore Docker) :
 ```bash
-bash scripts/download_docker.sh       # interactif : demande la cible (Windows/Debian/RHEL) + GPU
-#   ou : TARGET=debian GPU=yes bash scripts/download_docker.sh   (--dry-run pour prévisualiser)
+# 1) Docker + ses dépendances pour la machine cible (Windows / Debian / RHEL)
+bash scripts/download_docker.sh
+
+# 2) L'application (images + modèles + code)
+bash scripts/pull_models.sh          # bge-m3, mistral:7b, qwen2.5:7b
+bash scripts/export_offline.sh       # -> ./offline_bundle (images, modèles, code, IMPORT.md)
 ```
-→ `docker_offline/` : Docker Desktop+WSL2 (Windows) **ou** binaires statiques+compose (Linux),
-NVIDIA Container Toolkit (si GPU), installeur Linux et `INSTALL_DOCKER.md`.
 
-**2. L'application EDGAR** (images, modèles, code) :
-```bash
-docker compose up -d --build          # construit les images
-bash scripts/pull_models.sh           # bge-m3, mistral:7b, qwen2.5:7b -> volume
-bash scripts/export_offline.sh        # -> ./offline_bundle (images, modèles, code, IMPORT.md)
+Sur la machine hors-ligne : installer Docker, `docker load` des images, restaurer les
+dossiers `./ollama` et `./qdrant`, puis `docker compose up -d`. Le **pilote NVIDIA**
+(GPU) reste à récupérer manuellement (il dépend du matériel et de l'OS).
+
+**Vérification** (`scripts/verify_offline.sh`) : chargement des modèles sous
+`--network none`, puis pipeline complet (ingestion, recherche, reranking, génération)
+et HTTPS sur un réseau **sans aucune sortie Internet**.
+
+---
+
+## Sécurité (ANSSI / PSSI-A)
+
+Hachage **Argon2id**, politique de mot de passe (≥ 12, 4 classes), anti-bruteforce,
+sessions serveur **révocables** (révocation immédiate des droits), **CSRF**, en-têtes
+de sécurité (CSP stricte), autoescape (anti-XSS), requêtes SQL paramétrées,
+assainissement des noms de fichiers et **confinement** des accès (anti path-traversal),
+journalisation d'audit horodatée avec **IP**, messages d'erreur génériques
+(anti-énumération), **HTTPS** (cookies `Secure`).
+
+---
+
+## Structure du projet
+
 ```
-Transférer les deux dossiers puis suivre `INSTALL_DOCKER.md` puis `IMPORT.md` sur le poste cible.
-Le **pilote NVIDIA** (GPU) reste à récupérer manuellement (dépend du GPU/OS).
-
-**Vérification (`scripts/verify_offline.sh`) — validée :**
-- Partie A : BM25 (FastEmbed) et reranker (bge-reranker-v2-m3) chargés sous
-  `--network none` — **aucun** réseau ;
-- Partie B : stack sur réseau interne (egress Internet coupé, prouvé) →
-  ingestion + retrieval (parsing/OCR, bge-m3, hybride RRF, re-prompt mistral,
-  reranking, seuil, génération) : **27 assertions vertes**.
-
-**Prérequis hôte non embarquable** (pour le GPU) : pilote NVIDIA + NVIDIA
-Container Toolkit.
-
-## Premier administrateur (bootstrap)
-Aucun mot de passe par défaut. Après le démarrage des conteneurs :
-```bash
-# Mot de passe imposé :
-docker compose exec app env EDGAR_BOOTSTRAP_PASSWORD='MotDePasse!Fort12' \
-  python scripts/bootstrap_admin.py
-# …ou laisser le script générer un mot de passe fort (affiché une seule fois).
+edgar2/
+  docker-compose.yml          docker-compose.offline.yml
+  nginx/                      # reverse proxy HTTPS (Dockerfile, conf, cert auto-signé)
+  app/
+    main.py                   # FastAPI : routes, SSE, sécurité
+    core/                     # config, auth, db, bases, ingest, importer, parsers,
+                              #   vectorstore, sparse, keywords, rerank, llm, retrieval, rag
+    templates/  static/       # Jinja2 + CSS/JS vanilla (assets vendus localement)
+  scripts/                    # bootstrap admin, gen_cert, download_docker, export/verify offline
+  CHANGELOG.md
 ```
-Le changement de mot de passe est **forcé** à la première connexion.
 
-## Feuille de route des briques
-- [x] **1. Socle web** — FastAPI, statics, healthcheck, en-têtes de sécurité.
-- [x] **2. Auth/sécurité** — Argon2id, sessions révocables, rôles, CSRF,
-      politique MDP, anti-bruteforce, audit+IP, bootstrap admin.
-- [x] **3. Multi-bases** — registre `bases.json`, `vectorstore.py` (collections
-      Qdrant `dense`+`sparse`, recherche hybride RRF, cloisonnement). Testé contre Qdrant réel.
-- [x] **4a. Vectorisation + tagging** — embeddings bge-m3 (lots de 32), sparse
-      BM25 FastEmbed (modèle **bundlé offline**), mots-clés YAKE, dédup par hash,
-      upsert hybride. Testé offline en conteneur (Ollama+Qdrant réels).
-- [x] **4b. Parsing/OCR** — `unstructured` (fast=pdfminer, ocr_only=Tesseract
-      fra+eng), découpage structuré `chunk_by_title`, images en OCR forcé,
-      `ingest_file` (hash→parsing→chunks→index). Testé en conteneur (md, docx, OCR).
-- [x] **5. Retrieval** — re-prompt multi-requêtes (mistral), hybride RRF par
-      requête, fusion inter-requêtes RRF, reranking bge-reranker-v2-m3 (CPU,
-      bundlé), seuil de pertinence (refus d'inventer), leviers + diagnostic.
-      Testé en conteneur (13 assertions).
-- [x] **6. Génération streaming + UI chat** — `rag.py` (contexte numéroté,
-      prompt système FR + citations [n], refus d'inventer), endpoint SSE,
-      interface chat (bulles, Markdown assaini, coloration code, bloc Sources
-      dépliable, diagnostic), assets front vendus localement, corpus de démo.
-      Streaming validé de bout en bout.
-- [x] **7. Panneau d'expérimentation** — ⚙️ toggles + sliders (mode hybride/
-      dense/BM25, re-prompt + N, rerank + top-k, seuil, k candidats, mode
-      recherche, LLM, affichage mots-clés) ; effet immédiat ; portée session
-      (prime) vs défauts globaux admin ; « réinitialiser » ; diagnostic sous
-      chaque réponse. **Aperçu PDF** positionné sur la page citée (route `/doc`
-      confinée, iframe même-origine) + téléchargement.
-- [x] **8. Administration** — dashboard santé + points, CRUD bases, validation
-      comptes/rôles (révocation immédiate), réglages de recherche globaux,
-      journaux d'audit, contribution (upload + ingestion, filename assaini).
-      Garde de rôle testée (403). 
-- [x] **9. Export hors-ligne** — `pull_models.sh`, `export_offline.sh`,
-      `docker-compose.offline.yml` (réseau interne), `verify_offline.sh`
-      (--network none + réseau interne). Voir ci-dessous.
+---
+
+## Développement
+
+Les **templates** (`app/templates`) et **assets** (`app/static`) sont montés à chaud :
+éditer un `.html` puis recharger la page (F5) ; pour le CSS/JS, recharger en **Ctrl+F5**
+(ou `docker compose restart app`). Les changements de **code Python** nécessitent
+`docker compose build app && docker compose up -d app`.
+
+---
+
+## Crédits
+
+Développé par le **Premier-maître Guillaume Marzo** et le **Premier-maître Remy Naso**
+— page « À propos » dans l'application.
+
+© Marine nationale 2026 — Tous droits réservés · Usage interne Marine nationale.
