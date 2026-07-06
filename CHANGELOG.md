@@ -4,9 +4,10 @@ Format inspiré de [Keep a Changelog](https://keepachangelog.com/fr/) ;
 versionnage [SemVer](https://semver.org/lang/fr/).
 
 Les versions **0.1.0 → 0.9.0** sont des **pré-releases** (développement incrémental,
-une par brique). La **1.0.0** est la première version stable : application complète.
-La **2.0.0** est prévue une fois le fonctionnement **hors-ligne validé en conditions
-réelles sur un volume important de fichiers**.
+une par brique). Les versions **1.x** sont **stables** (1.0.0 = application complète
+initiale ; version courante mise en avant = la plus récente). La **2.0.0** est prévue
+une fois le fonctionnement **hors-ligne validé en conditions réelles sur un volume
+important de fichiers**.
 
 > Ces résumés sont un point de départ — à ajuster librement selon les besoins.
 
@@ -16,7 +17,7 @@ réelles sur un volume important de fichiers**.
 - Pistes : enrichissement LLM des mots-clés à l'ingestion (option par base),
   viewer PDF inline plus poussé, optimisations mémoire/VRAM.
 
-## [1.2.0] — 2026-07-06 — stabilité, gestion documentaire & performances *(pré-release)*
+## [1.2.0] — 2026-07-06 — stabilité, gestion documentaire & performances
 
 ### Corrigé
 - **Blocage / 504 pendant l'import** : les traitements lourds (ingestion, embeddings,
@@ -44,7 +45,7 @@ réelles sur un volume important de fichiers**.
   interrupteurs), actions comptes/documents alignées, bouton « ← Conversations » dans la
   barre latérale sur toutes les pages, **anti-cache** des assets (fin des soucis de cache).
 
-## [1.1.0] — 2026-07-03 — améliorations UX, admin & HTTPS *(pré-release)*
+## [1.1.0] — 2026-07-03 — améliorations UX, admin & HTTPS
 
 ### Ajouté
 - **HTTPS via reverse proxy nginx** : terminaison TLS, redirection HTTP→HTTPS,
