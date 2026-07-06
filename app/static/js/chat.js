@@ -216,7 +216,10 @@ document.addEventListener("DOMContentLoaded", () => {
   applyKeywordVisibility();
 
   const sel = document.querySelector("[data-base-select]");
-  if (sel) sel.addEventListener("change", () => { window.location.href = "/chat?base=" + encodeURIComponent(sel.value); });
+  if (sel) sel.addEventListener("change", () => {
+    const target = sel.getAttribute("data-target") || "/chat";
+    window.location.href = target + "?base=" + encodeURIComponent(sel.value);
+  });
 
   const toggle = document.querySelector("[data-sidebar-toggle]");
   const sidebar = document.querySelector("[data-sidebar]");
@@ -238,7 +241,12 @@ document.addEventListener("DOMContentLoaded", () => {
   const panel = document.querySelector("[data-panel]");
   const chat = document.querySelector(".chat");
   if (panel) {
-    document.querySelector("[data-panel-toggle]").addEventListener("click", () => { panel.hidden = !panel.hidden; });
+    const overlay = document.querySelector(".panel-overlay");
+    const togglePanel = () => {
+      const open = panel.classList.toggle("open");
+      if (overlay) overlay.hidden = !open;
+    };
+    document.querySelectorAll("[data-panel-toggle]").forEach((b) => b.addEventListener("click", togglePanel));
     panel.querySelectorAll('input[type="range"]').forEach((r) => {
       const out = panel.querySelector('[data-out="' + r.getAttribute("data-p") + '"]');
       if (out) r.addEventListener("input", () => { out.textContent = r.value; });
@@ -265,6 +273,101 @@ document.addEventListener("DOMContentLoaded", () => {
       }
     });
   }
+
+  // --- Import / ré-analyse en tâche de fond (progression dynamique) ---
+  const jobPanel = document.querySelector("[data-job-panel]");
+  function fmtETA(job) {
+    if (!job.total || !job.done || job.status === "done") return job.status === "done" ? "terminé" : "";
+    const el = (Date.now() / 1000) - job.started;
+    const s = Math.max(0, Math.round(el / job.done * (job.total - job.done)));
+    return "≈ " + (s >= 60 ? Math.round(s / 60) + " min" : s + " s") + " restant";
+  }
+  function renderJob(job) {
+    if (!jobPanel) return;
+    jobPanel.hidden = false;
+    const q = (s) => jobPanel.querySelector(s);
+    const pct = job.total ? Math.round(job.done / job.total * 100) : 0;
+    q("[data-job-fill]").style.width = pct + "%";
+    q("[data-job-progress]").textContent = job.done + " / " + job.total;
+    q("[data-job-ok]").textContent = job.succeeded;
+    q("[data-job-skip]").textContent = job.skipped;
+    q("[data-job-fail]").textContent = job.failed;
+    q("[data-job-eta]").textContent = fmtETA(job);
+    q(".job-title").textContent = job.status === "done" ? "Import terminé" : "Import en cours…";
+    q("[data-job-current]").textContent = job.status === "done" ? "Terminé." : (job.current ? "En cours : " + job.current : "");
+    if (job.failures && job.failures.length) {
+      q("[data-job-failures]").hidden = false;
+      q("[data-job-failure-list]").innerHTML = job.failures
+        .map((f) => "<li><b>" + f.file + "</b> : " + (f.reason || "") + "</li>").join("");
+    }
+  }
+  function trackJob(jobId) {
+    const es = new EventSource("/contribute/jobs/" + jobId + "/stream");
+    es.addEventListener("progress", (e) => renderJob(JSON.parse(e.data)));
+    es.addEventListener("done", (e) => {
+      renderJob(JSON.parse(e.data));
+      es.close();
+      // Sur la page Documents, rafraîchir pour afficher les nouveaux statuts.
+      if (document.querySelector("[data-reload-on-job]")) setTimeout(() => location.reload(), 1200);
+    });
+    es.addEventListener("error", () => es.close());
+  }
+  document.querySelectorAll("[data-import-form]").forEach((form) => {
+    form.addEventListener("submit", async (e) => {
+      e.preventDefault();
+      const btn = e.submitter || form.querySelector("[data-action]");
+      const action = btn ? btn.getAttribute("data-action") : form.getAttribute("action");
+      try {
+        const r = await fetch(action, { method: "POST", body: new FormData(form) });
+        const data = await r.json();
+        if (data.job_id) trackJob(data.job_id);
+        else alert(data.error || "Échec du lancement.");
+      } catch (err) { alert("Erreur réseau."); }
+    });
+  });
+
+  // --- Recherche de documents : filtre live (nom + statut) ---
+  const docSearch = document.querySelector("[data-doc-search]");
+  const docStatus = document.querySelector("[data-doc-status]");
+  if (docSearch || docStatus) {
+    const rows = Array.from(document.querySelectorAll("[data-doc-row]"));
+    const empty = document.querySelector("[data-doc-empty]");
+    const applyFilter = () => {
+      const q = (docSearch ? docSearch.value : "").trim().toLowerCase();
+      const st = docStatus ? docStatus.value : "";
+      let visible = 0;
+      rows.forEach((r) => {
+        const okName = !q || (r.getAttribute("data-filename") || "").includes(q);
+        const okStatus = !st || r.getAttribute("data-status") === st;
+        const show = okName && okStatus;
+        r.hidden = !show;
+        if (show) visible++;
+      });
+      if (empty) empty.hidden = visible !== 0 || rows.length === 0;
+    };
+    if (docSearch) docSearch.addEventListener("input", applyFilter);
+    if (docStatus) docStatus.addEventListener("change", applyFilter);
+  }
+
+  // --- Préréglages Rapide / Précis ---
+  const PRESETS = {
+    fast: { mode: "hybrid", use_reprompt: false, n_reformulations: 1, use_rerank: true, top_k: 5, k_candidates: 10, threshold: 0.3 },
+    precise: { mode: "hybrid", use_reprompt: true, n_reformulations: 3, use_rerank: true, top_k: 8, k_candidates: 20, threshold: 0.3 },
+  };
+  document.querySelectorAll("[data-preset]").forEach((b) => {
+    b.addEventListener("click", () => {
+      const p = PRESETS[b.getAttribute("data-preset")];
+      const panel = document.querySelector("[data-panel]");
+      if (!p || !panel) return;
+      Object.entries(p).forEach(([k, v]) => {
+        const c = panel.querySelector('[data-p="' + k + '"]');
+        if (!c) return;
+        if (c.type === "checkbox") c.checked = !!v; else c.value = v;
+        const out = panel.querySelector('[data-out="' + k + '"]');
+        if (out) out.textContent = v;
+      });
+    });
+  });
 
   // --- Composer ---
   const composer = document.querySelector("[data-composer]");

@@ -38,11 +38,9 @@ pi_heif==0.20.0            # requis par unstructured.partition.pdf (support HEIF
 # --- Mots-clés (brique : tagging) ---
 yake==0.4.8
 
-# --- Reranking CPU (brique 5) ---
-# torch CPU uniquement (évite les ~2 Go de la build CUDA), via l'index PyTorch CPU.
---extra-index-url https://download.pytorch.org/whl/cpu
-torch==2.5.1+cpu
-sentence-transformers==3.3.1
+# --- Reranking CPU (v1.2.0) ---
+# Cross-encoder ONNX via FastEmbed (jinaai/jina-reranker-v2-base-multilingual).
+# Beaucoup plus léger/rapide que torch+sentence-transformers (retirés).
 
 # --- Rendu Markdown serveur (repli non-JS) ---
 # markdown-it-py==3.0.0

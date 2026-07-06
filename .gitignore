@@ -1,6 +1,8 @@
 # --- Données & secrets (jamais versionnés) ---
 /data/
 /documents/
+/ollama/
+/qdrant/
 .env
 
 # --- Assets binaires vendus localement (transférés hors-ligne, pas dans Git) ---

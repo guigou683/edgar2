@@ -1,45 +1,56 @@
 {% extends "base.html" %}
 {% block content %}
 <div class="admin">
-  <a class="admin-back" href="/chat">← Conversations</a>
   <h1>Importer des documents</h1>
   <p class="help">Formats : PDF, DOCX, MD, HTML, PPTX, XLSX, TXT, images (OCR).
-     Chaque document est analysé, découpé, taggé puis indexé (déduplication automatique).</p>
-
-  {% if result %}
-  <p class="alert {{ 'alert-ok' if result.ok else 'alert-error' }}">{{ result.message }}</p>
-  {% endif %}
+     L'import s'exécute en tâche de fond : la progression s'affiche ci-dessous et
+     vous pouvez naviguer ailleurs pendant ce temps.</p>
 
   {% if bases %}
   <div class="admin-card">
     <h2>Ajouter des fichiers (navigateur)</h2>
-    <form class="admin-form" method="post" action="/contribute/upload" enctype="multipart/form-data">
+    <form class="admin-form" data-import-form enctype="multipart/form-data">
       <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
       <label>Base de destination
         <select name="base_id">
           {% for b in bases %}<option value="{{ b.id }}">{{ b.name }} ({{ b.parse_strategy }})</option>{% endfor %}
         </select>
       </label>
-      <label>Fichiers (sélection multiple possible)<input type="file" name="files" multiple required></label>
-      <div><button class="btn-mini" type="submit">Importer et indexer</button></div>
+      <label>Analyse
+        <select name="strategy">
+          <option value="auto">Automatique (stratégie de la base)</option>
+          <option value="fast">Rapide (texte natif)</option>
+          <option value="ocr_only">OCR (Tesseract fra+eng) — pour scans/images</option>
+        </select>
+      </label>
+      <label>Fichiers (sélection multiple)<input type="file" name="files" multiple required></label>
+      <div><button class="btn-mini" type="submit" data-action="/contribute/upload">Importer et indexer</button></div>
     </form>
   </div>
 
   <div class="admin-card">
     <h2>Ingérer le dossier de la base (serveur)</h2>
     <p class="help">Indexe tous les fichiers déjà présents dans le dossier de la base sur le
-       serveur (dépôt par disque ou partage réseau), en ignorant ceux déjà indexés.
-       Adapté aux gros volumes.</p>
-    <form class="admin-form" method="post" action="/contribute/scan">
+       serveur (dépôt par disque/partage), en ignorant ceux déjà indexés. Adapté aux gros volumes.</p>
+    <form class="admin-form" data-import-form>
       <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
       <label>Base à scanner
         <select name="base_id">
           {% for b in bases %}<option value="{{ b.id }}">{{ b.name }} ({{ b.parse_strategy }})</option>{% endfor %}
         </select>
       </label>
-      <div><button class="btn-mini" type="submit">Scanner et indexer le dossier</button></div>
+      <label>Analyse
+        <select name="strategy">
+          <option value="auto">Automatique (stratégie de la base)</option>
+          <option value="fast">Rapide (texte natif)</option>
+          <option value="ocr_only">OCR (Tesseract fra+eng)</option>
+        </select>
+      </label>
+      <div><button class="btn-mini" type="submit" data-action="/contribute/scan">Scanner et indexer le dossier</button></div>
     </form>
   </div>
+
+  {% include "partials/job_panel.html" %}
   {% else %}
   <p class="help">Aucune base disponible. Un administrateur doit d'abord en créer une.</p>
   {% endif %}

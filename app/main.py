@@ -7,10 +7,13 @@ Briques actives :
 """
 from __future__ import annotations
 
+import asyncio
 import csv
 import io
 import json
 import secrets
+import time
+from pathlib import Path
 from typing import Optional
 
 import httpx
@@ -23,8 +26,9 @@ from fastapi.responses import (
 )
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
+from starlette.concurrency import run_in_threadpool
 
-from core import appsettings, auth, bases, db, ingest, rag, vectorstore
+from core import appsettings, auth, bases, db, importer, ingest, rag, vectorstore
 from core.config import settings
 from core.security import (
     CSP_POLICY,
@@ -42,6 +46,8 @@ db.init_db()
 
 app.mount("/static", StaticFiles(directory=str(settings.STATIC_DIR)), name="static")
 templates = Jinja2Templates(directory=str(settings.TEMPLATES_DIR))  # autoescape ON
+# Version d'asset (change à chaque démarrage) -> anti-cache navigateur pour CSS/JS.
+templates.env.globals["asset_v"] = str(int(time.time()))
 
 CSRF_COOKIE = "edgar_csrf"
 
@@ -112,6 +118,15 @@ async def home(request: Request):
 # --------------------------------------------------------------------------
 # Chat (interface + streaming SSE)
 # --------------------------------------------------------------------------
+@app.get("/about")
+async def about_page(request: Request):
+    user = auth.current_user(request)
+    if not user:
+        return RedirectResponse("/login", status_code=303)
+    return _render_with_csrf(request, "about.html",
+                             {"user": user, "title": "À propos", "version": settings.VERSION})
+
+
 @app.get("/chat")
 async def chat_page(request: Request, base: Optional[str] = None, conv: Optional[int] = None):
     user = auth.current_user(request)
@@ -186,7 +201,8 @@ async def chat_stream(request: Request):
         user_overrides = {k: v for k, v in user_overrides.items() if k != "llm_model"}
     params = appsettings.build_params(user_overrides, overrides)
     db.add_message(conv_id, "user", question)
-    prep = rag.prepare(base_id, question, params)
+    # Retrieval lourd (embeddings, rerank, reformulation) hors de la boucle asynchrone.
+    prep = await run_in_threadpool(rag.prepare, base_id, question, params)
 
     def event_stream():
         yield _sse("meta", {
@@ -444,6 +460,130 @@ async def serve_doc(request: Request, base_id: str, filename: str,
 
 
 # --------------------------------------------------------------------------
+# Recherche & gestion des documents
+# --------------------------------------------------------------------------
+def _reconcile_documents(base_id: str) -> None:
+    """Renseigne le registre pour les fichiers présents sur disque mais absents
+    de la table (ex. documents indexés avant cette version)."""
+    from qdrant_client import models as qm
+    try:
+        docs_dir = safe_join(settings.DOCUMENTS_DIR, base_id)
+    except ValueError:
+        return
+    if not docs_dir.exists():
+        return
+    known = {d["filename"] for d in db.list_documents(base_id)}
+    client = vectorstore.get_client()
+    coll = vectorstore.collection_name(base_id)
+    exists = client.collection_exists(coll)
+    for p in sorted(docs_dir.rglob("*")):
+        if not p.is_file() or p.name in known:
+            continue
+        cnt = 0
+        if exists:
+            try:
+                cnt = client.count(coll, exact=True, count_filter=qm.Filter(must=[
+                    qm.FieldCondition(key="file", match=qm.MatchValue(value=p.name))])).count
+            except Exception:
+                cnt = 0
+        db.upsert_document(base_id, p.name, "indexed" if cnt else "pending",
+                           cnt, 0, None, p.stat().st_size, None)
+
+
+@app.get("/documents")
+async def documents_page(request: Request, base: Optional[str] = None,
+                         q: str = "", status: str = ""):
+    """Recherche/consultation de documents — accessible à tous les rôles."""
+    user = auth.current_user(request)
+    if not user:
+        return RedirectResponse("/login", status_code=303)
+    if user["must_change_password"]:
+        return RedirectResponse("/change-password", status_code=303)
+    all_bases = bases.load_bases()
+    base_id = base or (all_bases[0]["id"] if all_bases else None)
+    docs, stats = [], {}
+    if base_id and bases.get_base(base_id):
+        await run_in_threadpool(_reconcile_documents, base_id)
+        docs = db.list_documents(base_id)          # tout : filtrage live côté client
+        stats = db.count_documents(base_id)
+    return _render_with_csrf(request, "documents.html", {
+        "user": user, "title": "Documents", "bases": all_bases, "base_id": base_id,
+        "documents": docs, "stats": stats, "q": q, "status": status,
+        "can_manage": auth.has_role(user, auth.ROLE_CONTRIBUTOR),
+    })
+
+
+@app.post("/documents/delete")
+async def documents_delete(request: Request, base_id: str = Form(...),
+                           filename: str = Form(...), csrf_token: str = Form(...)):
+    user, resp = _guard(request, auth.ROLE_CONTRIBUTOR)
+    if resp:
+        return resp
+    if _check_csrf(request, csrf_token) and bases.get_base(base_id):
+        name = sanitize_filename(filename)
+        vectorstore.delete_by_file(base_id, name)
+        try:
+            path = safe_join(settings.DOCUMENTS_DIR, base_id, name)
+            if path.is_file():
+                path.unlink()
+        except ValueError:
+            pass
+        db.delete_document_row(base_id, name)
+        db.insert_audit("document_delete", user["id"], user["username"],
+                        client_ip(request), _ua(request), f"base={base_id} fichier={name}")
+    return RedirectResponse(f"/documents?base={base_id}", status_code=303)
+
+
+@app.post("/documents/reanalyze")
+async def documents_reanalyze(request: Request, base_id: str = Form(...),
+                              filename: str = Form(...), strategy: str = Form("auto"),
+                              csrf_token: str = Form(...)):
+    user, resp = _guard(request, auth.ROLE_CONTRIBUTOR)
+    if resp:
+        return resp
+    base = bases.get_base(base_id)
+    if _check_csrf(request, csrf_token) and base:
+        try:
+            path = safe_join(settings.DOCUMENTS_DIR, base_id, sanitize_filename(filename))
+        except ValueError:
+            path = None
+        if path and path.is_file():
+            strat = _resolve_strategy(base, strategy)
+            job_id = importer.start(base_id, [str(path)], strat, reindex=True)
+            db.insert_audit("document_reanalyze", user["id"], user["username"],
+                            client_ip(request), _ua(request),
+                            f"base={base_id} fichier={path.name} stratégie={strat}")
+            return JSONResponse({"job_id": job_id, "count": 1})
+    return JSONResponse({"error": "document introuvable"}, status_code=404)
+
+
+@app.post("/documents/retry-failed")
+async def documents_retry_failed(request: Request, base_id: str = Form(...),
+                                 strategy: str = Form("ocr_only"), csrf_token: str = Form(...)):
+    user, resp = _guard(request, auth.ROLE_CONTRIBUTOR)
+    if resp:
+        return resp
+    base = bases.get_base(base_id)
+    if not (_check_csrf(request, csrf_token) and base):
+        return JSONResponse({"error": "requête invalide"}, status_code=400)
+    paths = []
+    for d in db.list_documents(base_id, status="failed"):
+        try:
+            p = safe_join(settings.DOCUMENTS_DIR, base_id, d["filename"])
+            if p.is_file():
+                paths.append(str(p))
+        except ValueError:
+            pass
+    if not paths:
+        return JSONResponse({"error": "aucun document en échec"}, status_code=400)
+    strat = _resolve_strategy(base, strategy)
+    job_id = importer.start(base_id, paths, strat, reindex=True)
+    db.insert_audit("retry_failed", user["id"], user["username"],
+                    client_ip(request), _ua(request), f"base={base_id} n={len(paths)}")
+    return JSONResponse({"job_id": job_id, "count": len(paths)})
+
+
+# --------------------------------------------------------------------------
 # Administration (selon rôle) & contribution
 # --------------------------------------------------------------------------
 def _guard(request: Request, role: str):
@@ -468,6 +608,7 @@ async def admin_dashboard(request: Request):
         return resp
     ollama = await _ping(settings.OLLAMA_URL, "/api/tags")
     qdrant = await _ping(settings.QDRANT_URL, "/healthz")
+    runtime = await _ollama_runtime()
     base_stats = []
     for b in bases.load_bases():
         try:
@@ -477,7 +618,7 @@ async def admin_dashboard(request: Request):
         base_stats.append({**b, "points": n})
     return _render_with_csrf(request, "admin/dashboard.html", {
         "user": user, "title": "Administration", "ollama": ollama,
-        "qdrant": qdrant, "base_stats": base_stats,
+        "qdrant": qdrant, "runtime": runtime, "base_stats": base_stats,
     })
 
 
@@ -675,92 +816,100 @@ async def contribute_page(request: Request):
         return resp
     return _render_with_csrf(request, "admin/contribute.html", {
         "user": user, "title": "Importer des documents", "bases": bases.load_bases(),
+        "strategies": _STRATEGY_CHOICES,
     })
 
 
-def _contribute_result(request, user, result):
-    return _render_with_csrf(request, "admin/contribute.html", {
-        "user": user, "title": "Importer des documents",
-        "bases": bases.load_bases(), "result": result})
+_STRATEGY_CHOICES = ("auto", "fast", "ocr_only")
+
+
+def _resolve_strategy(base: dict, requested: str) -> str:
+    """'auto' -> stratégie de la base ; sinon la stratégie demandée (fast/ocr_only)."""
+    return requested if requested in ("fast", "ocr_only") else base.get("parse_strategy", "fast")
 
 
 @app.post("/contribute/upload")
 async def contribute_upload(request: Request, base_id: str = Form(...),
-                            csrf_token: str = Form(...),
+                            csrf_token: str = Form(...), strategy: str = Form("auto"),
                             files: list[UploadFile] = File(...)):
-    """Import d'un ou plusieurs fichiers depuis le navigateur."""
+    """Enregistre les fichiers et lance l'import en tâche de fond (renvoie job_id)."""
     user, resp = _guard(request, auth.ROLE_CONTRIBUTOR)
     if resp:
         return resp
-    base = bases.get_base(base_id)
     if not _check_csrf(request, csrf_token):
-        return _contribute_result(request, user, {"ok": False, "message": "Session expirée, réessayez."})
+        return JSONResponse({"error": "CSRF invalide"}, status_code=403)
+    base = bases.get_base(base_id)
     if not base:
-        return _contribute_result(request, user, {"ok": False, "message": "Base inconnue."})
+        return JSONResponse({"error": "base inconnue"}, status_code=404)
 
     docs_dir = safe_join(settings.DOCUMENTS_DIR, base_id)
     docs_dir.mkdir(parents=True, exist_ok=True)
-    strategy = base.get("parse_strategy", "fast")
-    indexed_docs, skipped, errors, total_chunks = 0, 0, 0, 0
+    saved = []
     for f in files:
         if not f.filename:
             continue
-        safe_name = sanitize_filename(f.filename)
-        try:
-            dest = safe_join(docs_dir, safe_name)
-            dest.write_bytes(await f.read())
-            rep = ingest.ingest_file(base_id, str(dest), file_name=safe_name, strategy=strategy)
-            if rep.get("skipped"):
-                skipped += 1
-            else:
-                indexed_docs += 1
-                total_chunks += rep.get("indexed", 0)
-            db.insert_audit("document_upload", user["id"], user["username"],
-                            client_ip(request), _ua(request),
-                            f"base={base_id} fichier={safe_name} {rep}")
-        except Exception:
-            errors += 1
-    msg = (f"{indexed_docs} document(s) importé(s) ({total_chunks} extraits), "
-           f"{skipped} déjà indexé(s)" + (f", {errors} en échec." if errors else "."))
-    return _contribute_result(request, user, {"ok": errors == 0, "message": msg})
+        name = sanitize_filename(f.filename)
+        dest = safe_join(docs_dir, name)
+        dest.write_bytes(await f.read())     # I/O async, ne bloque pas la boucle
+        saved.append(str(dest))
+    if not saved:
+        return JSONResponse({"error": "aucun fichier"}, status_code=400)
+
+    strat = _resolve_strategy(base, strategy)
+    job_id = importer.start(base_id, saved, strat)
+    db.insert_audit("document_upload", user["id"], user["username"],
+                    client_ip(request), _ua(request),
+                    f"base={base_id} fichiers={len(saved)} stratégie={strat}")
+    return JSONResponse({"job_id": job_id, "count": len(saved)})
 
 
 @app.post("/contribute/scan")
 async def contribute_scan(request: Request, base_id: str = Form(...),
-                          csrf_token: str = Form(...)):
-    """Ingestion de tout le dossier serveur de la base (fichiers non encore indexés)."""
+                          csrf_token: str = Form(...), strategy: str = Form("auto")):
+    """Lance en tâche de fond l'ingestion de tout le dossier serveur de la base."""
     user, resp = _guard(request, auth.ROLE_CONTRIBUTOR)
     if resp:
         return resp
-    base = bases.get_base(base_id)
     if not _check_csrf(request, csrf_token):
-        return _contribute_result(request, user, {"ok": False, "message": "Session expirée, réessayez."})
+        return JSONResponse({"error": "CSRF invalide"}, status_code=403)
+    base = bases.get_base(base_id)
     if not base:
-        return _contribute_result(request, user, {"ok": False, "message": "Base inconnue."})
-
+        return JSONResponse({"error": "base inconnue"}, status_code=404)
     docs_dir = safe_join(settings.DOCUMENTS_DIR, base_id)
     if not docs_dir.exists():
-        return _contribute_result(request, user, {"ok": False, "message": "Dossier de la base introuvable."})
-    strategy = base.get("parse_strategy", "fast")
-    indexed_docs, skipped, errors, total_chunks = 0, 0, 0, 0
-    for path in sorted(docs_dir.rglob("*")):
-        if not path.is_file():
-            continue
-        try:
-            rep = ingest.ingest_file(base_id, str(path), file_name=path.name, strategy=strategy)
-            if rep.get("skipped"):
-                skipped += 1
-            else:
-                indexed_docs += 1
-                total_chunks += rep.get("indexed", 0)
-        except Exception:
-            errors += 1
+        return JSONResponse({"error": "dossier introuvable"}, status_code=404)
+    paths = [str(p) for p in sorted(docs_dir.rglob("*")) if p.is_file()]
+    if not paths:
+        return JSONResponse({"error": "dossier vide"}, status_code=400)
+
+    strat = _resolve_strategy(base, strategy)
+    job_id = importer.start(base_id, paths, strat)
     db.insert_audit("folder_scan", user["id"], user["username"],
-                    client_ip(request), _ua(request),
-                    f"base={base_id} indexés={indexed_docs} ignorés={skipped} erreurs={errors}")
-    msg = (f"Scan terminé : {indexed_docs} nouveau(x) document(s) ({total_chunks} extraits), "
-           f"{skipped} déjà indexé(s)" + (f", {errors} en échec." if errors else "."))
-    return _contribute_result(request, user, {"ok": errors == 0, "message": msg})
+                    client_ip(request), _ua(request), f"base={base_id} fichiers={len(paths)}")
+    return JSONResponse({"job_id": job_id, "count": len(paths)})
+
+
+@app.get("/contribute/jobs/{job_id}/stream")
+async def contribute_job_stream(request: Request, job_id: str):
+    """Flux SSE de progression d'un job d'import (affichage dynamique)."""
+    if not auth.current_user(request):
+        return JSONResponse({"error": "non authentifié"}, status_code=401)
+
+    async def gen():
+        importer.cleanup()
+        while True:
+            job = importer.get_job(job_id)
+            if not job:
+                yield _sse("error", {"message": "job introuvable"})
+                return
+            yield _sse("progress", job)
+            if job.get("status") == "done":
+                yield _sse("done", job)
+                return
+            await asyncio.sleep(0.7)
+
+    return StreamingResponse(gen(), media_type="text/event-stream",
+                             headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"})
 
 
 # --------------------------------------------------------------------------
@@ -784,6 +933,23 @@ async def _generation_models() -> list[str]:
     """Modèles de génération (LLM) uniquement — exclut embeddings et rerankers."""
     return [m for m in await _installed_models()
             if not any(h in m.lower() for h in _NON_GEN_HINTS)]
+
+
+async def _ollama_runtime() -> dict:
+    """État d'exécution Ollama : modèles chargés, GPU/CPU, VRAM allouée (/api/ps)."""
+    try:
+        async with httpx.AsyncClient(timeout=5.0) as client:
+            r = await client.get(f"{settings.OLLAMA_URL}/api/ps")
+        out = []
+        for m in r.json().get("models", []):
+            size = int(m.get("size", 0) or 0)
+            vram = int(m.get("size_vram", 0) or 0)
+            where = "GPU" if size and vram >= size else ("CPU" if vram == 0 else "GPU + CPU")
+            out.append({"name": m.get("name", "?"), "size": size, "vram": vram,
+                        "pct": round(vram / size * 100) if size else 0, "where": where})
+        return {"ok": True, "models": out}
+    except Exception as exc:
+        return {"ok": False, "error": type(exc).__name__, "models": []}
 
 
 async def _ping(url: str, path: str) -> dict:

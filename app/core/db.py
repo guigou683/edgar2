@@ -113,6 +113,21 @@ CREATE TABLE IF NOT EXISTS messages (
     FOREIGN KEY (conversation_id) REFERENCES conversations(id) ON DELETE CASCADE
 );
 CREATE INDEX IF NOT EXISTS idx_msg_conv ON messages(conversation_id);
+
+CREATE TABLE IF NOT EXISTS documents (
+    id         INTEGER PRIMARY KEY AUTOINCREMENT,
+    base_id    TEXT NOT NULL,
+    filename   TEXT NOT NULL,
+    status     TEXT NOT NULL,                   -- indexed | failed | pending
+    chunks     INTEGER NOT NULL DEFAULT 0,
+    pages      INTEGER NOT NULL DEFAULT 0,
+    strategy   TEXT,
+    size       INTEGER NOT NULL DEFAULT 0,
+    error      TEXT,
+    updated_at TEXT NOT NULL,
+    UNIQUE(base_id, filename)
+);
+CREATE INDEX IF NOT EXISTS idx_docs_base ON documents(base_id);
 """
 
 
@@ -341,6 +356,59 @@ def set_setting(key: str, value_json: str) -> None:
             "ON CONFLICT(key) DO UPDATE SET value_json = excluded.value_json",
             (key, value_json),
         )
+
+
+# --------------------------------------------------------------------------
+# Registre des documents importés
+# --------------------------------------------------------------------------
+def upsert_document(base_id: str, filename: str, status: str, chunks: int = 0,
+                    pages: int = 0, strategy: Optional[str] = None,
+                    size: int = 0, error: Optional[str] = None) -> None:
+    with get_conn() as conn:
+        conn.execute(
+            "INSERT INTO documents (base_id, filename, status, chunks, pages, strategy, "
+            "size, error, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?) "
+            "ON CONFLICT(base_id, filename) DO UPDATE SET status=excluded.status, "
+            "chunks=excluded.chunks, pages=excluded.pages, strategy=excluded.strategy, "
+            "size=excluded.size, error=excluded.error, updated_at=excluded.updated_at",
+            (base_id, filename, status, chunks, pages, strategy, size, error, now_iso()),
+        )
+
+
+def list_documents(base_id: str, query: Optional[str] = None,
+                   status: Optional[str] = None) -> list[dict[str, Any]]:
+    sql = "SELECT * FROM documents WHERE base_id = ?"
+    args: list[Any] = [base_id]
+    if query:
+        sql += " AND filename LIKE ?"
+        args.append(f"%{query}%")
+    if status:
+        sql += " AND status = ?"
+        args.append(status)
+    sql += " ORDER BY filename"
+    with get_conn() as conn:
+        return [dict(r) for r in conn.execute(sql, args).fetchall()]
+
+
+def get_document(base_id: str, filename: str) -> Optional[dict[str, Any]]:
+    with get_conn() as conn:
+        row = conn.execute("SELECT * FROM documents WHERE base_id = ? AND filename = ?",
+                           (base_id, filename)).fetchone()
+        return dict(row) if row else None
+
+
+def delete_document_row(base_id: str, filename: str) -> None:
+    with get_conn() as conn:
+        conn.execute("DELETE FROM documents WHERE base_id = ? AND filename = ?",
+                     (base_id, filename))
+
+
+def count_documents(base_id: str) -> dict[str, int]:
+    with get_conn() as conn:
+        rows = conn.execute(
+            "SELECT status, COUNT(*) AS n FROM documents WHERE base_id = ? GROUP BY status",
+            (base_id,)).fetchall()
+        return {r["status"]: r["n"] for r in rows}
 
 
 def get_user_settings(user_id: int) -> Optional[str]:

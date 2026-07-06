@@ -16,6 +16,34 @@ réelles sur un volume important de fichiers**.
 - Pistes : enrichissement LLM des mots-clés à l'ingestion (option par base),
   viewer PDF inline plus poussé, optimisations mémoire/VRAM.
 
+## [1.2.0] — 2026-07-06 — stabilité, gestion documentaire & performances *(pré-release)*
+
+### Corrigé
+- **Blocage / 504 pendant l'import** : les traitements lourds (ingestion, embeddings,
+  reranking, reformulation) s'exécutent hors de la boucle asynchrone ; **import en
+  tâche de fond** → l'application reste réactive.
+
+### Ajouté
+- **Import repensé** : exécution en tâche de fond avec **progression dynamique** (SSE :
+  compteurs réussis/ignorés/échecs, fichier courant, temps restant), **raison précise
+  de chaque échec**, **choix de stratégie par import** (rapide *fast* / **OCR forcé**).
+- **Gestion des documents** (`/documents`) : recherche **filtrée à la frappe** et
+  consultation **ouvertes à tous les rôles** ; contributeur/admin : **supprimer**,
+  **ré-analyser** (fast↔OCR), **relancer les échecs**, statistiques par base.
+- **Préréglages ⚡ Rapide / 🎯 Précis** dans le panneau de recherche.
+- **Supervision GPU/CPU** au tableau de bord admin (modèles chargés, VRAM allouée via `/api/ps`).
+- **Page « À propos »** (version, développeurs, copyright) accessible depuis la barre latérale.
+
+### Modifié
+- **Reranker ONNX** `jinaai/jina-reranker-v2-base-multilingual` (rapide sur CPU) en
+  remplacement de bge-reranker-v2-m3/torch → **image app ~6,3 Go → ~2,9 Go**. Sans
+  impact sur l'indexation.
+- **Stockage en bind mounts** (`./ollama`, `./qdrant`) ; **templates & assets montés à
+  chaud** (édition HTML/CSS/JS sans reconstruction). Export/import adaptés (copie de dossiers).
+- **Interface** : panneau ⚙️ en **tiroir latéral** (nom/contrôle sur deux lignes,
+  interrupteurs), actions comptes/documents alignées, bouton « ← Conversations » dans la
+  barre latérale sur toutes les pages, **anti-cache** des assets (fin des soucis de cache).
+
 ## [1.1.0] — 2026-07-03 — améliorations UX, admin & HTTPS *(pré-release)*
 
 ### Ajouté

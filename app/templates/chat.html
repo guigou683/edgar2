@@ -44,79 +44,119 @@
             title="Régler les leviers de recherche">⚙️ Réglages de recherche</button>
   </div>
 
-  <div class="panel" data-panel hidden>
-    <p class="panel-note">Vos réglages sont <b>propres à votre session</b> et priment sur les
-       défauts globaux de l'administrateur. Effet immédiat, sans redémarrage.</p>
+  <div class="panel-overlay" data-panel-toggle hidden></div>
+  <aside class="panel" data-panel>
+    <div class="panel-header">
+      <span>⚙️ Réglages de recherche</span>
+      <button class="panel-close" type="button" data-panel-toggle aria-label="Fermer">×</button>
+    </div>
+    <div class="panel-body">
+      <p class="panel-note">Réglages <b>propres à votre session</b>, prioritaires sur les défauts
+         de l'administrateur. Effet immédiat.</p>
 
-    <div class="panel-grid">
-      <label>
-        Mode de recherche {{ ui.info("Hybride combine sens (IA) et mots-clés : meilleur rappel. IA seule = compréhension du sens. Lexicale = correspondance exacte des termes.") }}
-        <select data-p="mode">
-          <option value="hybrid" {% if panel.mode == 'hybrid' %}selected{% endif %}>Hybride (IA + Lexicale)</option>
-          <option value="dense"  {% if panel.mode == 'dense'  %}selected{% endif %}>IA (sémantique)</option>
-          <option value="bm25"   {% if panel.mode == 'bm25'   %}selected{% endif %}>Lexicale (mots-clés)</option>
-        </select>
-      </label>
+      <div class="pf">
+        <div class="pf-label">Préréglage</div>
+        <div class="preset-row">
+          <button type="button" class="btn-mini" data-preset="fast">⚡ Rapide</button>
+          <button type="button" class="btn-mini" data-preset="precise">🎯 Précis</button>
+        </div>
+      </div>
+
+      <div class="pf">
+        <div class="pf-label">Mode de recherche</div>
+        <div class="pf-control">
+          <select data-p="mode">
+            <option value="hybrid" {% if panel.mode == 'hybrid' %}selected{% endif %}>Hybride (IA + Lexicale)</option>
+            <option value="dense"  {% if panel.mode == 'dense'  %}selected{% endif %}>IA (sémantique)</option>
+            <option value="bm25"   {% if panel.mode == 'bm25'   %}selected{% endif %}>Lexicale (mots-clés)</option>
+          </select>
+          {{ ui.info("Hybride combine sens (IA) et mots-clés : meilleur rappel. IA seule = compréhension du sens. Lexicale = correspondance exacte des termes.") }}
+        </div>
+      </div>
 
       {% if is_admin %}
-      <label>
-        Modèle (LLM) {{ ui.info("Modèle de génération. Un plus gros modèle = réponses potentiellement meilleures mais plus lentes et plus gourmandes en VRAM. Réservé aux administrateurs.") }}
-        <select data-p="llm_model">
-          {% for m in generation_models %}
-          <option value="{{ m }}" {% if m == panel.llm_model %}selected{% endif %}>{{ m }}</option>
-          {% endfor %}
-          {% if not generation_models %}<option value="mistral:7b">mistral:7b</option>{% endif %}
-        </select>
-      </label>
+      <div class="pf">
+        <div class="pf-label">Modèle (LLM)</div>
+        <div class="pf-control">
+          <select data-p="llm_model">
+            {% for m in generation_models %}<option value="{{ m }}" {% if m == panel.llm_model %}selected{% endif %}>{{ m }}</option>{% endfor %}
+            {% if not generation_models %}<option value="mistral:7b">mistral:7b</option>{% endif %}
+          </select>
+          {{ ui.info("Modèle de génération. Un plus gros modèle = réponses potentiellement meilleures mais plus lentes et plus gourmandes en VRAM. Réservé aux administrateurs.") }}
+        </div>
+      </div>
       {% endif %}
 
-      <label class="switch">
-        <input type="checkbox" data-p="use_reprompt" {% if panel.use_reprompt %}checked{% endif %}>
-        Re-prompt multi-requêtes {{ ui.info("Reformule la question en plusieurs variantes avant de chercher : améliore le rappel, mais rallonge la recherche (un appel au LLM).") }}
-      </label>
-      <label>
-        Reformulations : <span data-out="n_reformulations">{{ panel.n_reformulations }}</span>
-        {{ ui.info("Nombre de variantes générées. Plus élevé = meilleure couverture mais recherche plus longue.") }}
-        <input type="range" min="1" max="5" step="1" data-p="n_reformulations" value="{{ panel.n_reformulations }}">
-      </label>
+      <div class="pf">
+        <div class="pf-label">Re-prompt multi-requêtes</div>
+        <div class="pf-control">
+          <label class="sw"><input type="checkbox" data-p="use_reprompt" {% if panel.use_reprompt %}checked{% endif %}><span></span></label>
+          {{ ui.info("Reformule la question en plusieurs variantes avant de chercher : améliore le rappel, mais rallonge la recherche (un appel au LLM).") }}
+        </div>
+      </div>
+      <div class="pf">
+        <div class="pf-label">Reformulations</div>
+        <div class="pf-control">
+          <input type="range" min="1" max="5" step="1" data-p="n_reformulations" value="{{ panel.n_reformulations }}">
+          <span class="pf-val" data-out="n_reformulations">{{ panel.n_reformulations }}</span>
+          {{ ui.info("Nombre de variantes générées. Plus élevé = meilleure couverture mais recherche plus longue.") }}
+        </div>
+      </div>
 
-      <label class="switch">
-        <input type="checkbox" data-p="use_rerank" {% if panel.use_rerank %}checked{% endif %}>
-        Reranking {{ ui.info("Ré-ordonne finement les passages avec un modèle dédié (CPU). Améliore nettement la pertinence, mais ajoute quelques secondes.") }}
-      </label>
-      <label>
-        Passages conservés (top-k) : <span data-out="top_k">{{ panel.top_k }}</span>
-        {{ ui.info("Nombre de passages transmis au LLM. Plus élevé = plus de contexte (réponse plus complète) mais plus de bruit possible et génération plus lente.") }}
-        <input type="range" min="1" max="30" step="1" data-p="top_k" value="{{ panel.top_k }}">
-      </label>
+      <div class="pf">
+        <div class="pf-label">Reranking</div>
+        <div class="pf-control">
+          <label class="sw"><input type="checkbox" data-p="use_rerank" {% if panel.use_rerank %}checked{% endif %}><span></span></label>
+          {{ ui.info("Ré-ordonne finement les passages avec un modèle dédié (CPU). Améliore nettement la pertinence, mais ajoute quelques secondes.") }}
+        </div>
+      </div>
+      <div class="pf">
+        <div class="pf-label">Passages conservés (top-k)</div>
+        <div class="pf-control">
+          <input type="range" min="1" max="30" step="1" data-p="top_k" value="{{ panel.top_k }}">
+          <span class="pf-val" data-out="top_k">{{ panel.top_k }}</span>
+          {{ ui.info("Nombre de passages transmis au LLM. Plus élevé = plus de contexte mais plus de bruit possible et génération plus lente.") }}
+        </div>
+      </div>
+      <div class="pf">
+        <div class="pf-label">Candidats récupérés (k)</div>
+        <div class="pf-control">
+          <input type="range" min="1" max="100" step="1" data-p="k_candidates" value="{{ panel.k_candidates }}">
+          <span class="pf-val" data-out="k_candidates">{{ panel.k_candidates }}</span>
+          {{ ui.info("Nombre de passages récupérés avant reranking. Plus élevé = meilleur rappel mais recherche/reranking plus longs.") }}
+        </div>
+      </div>
+      <div class="pf">
+        <div class="pf-label">Seuil de pertinence</div>
+        <div class="pf-control">
+          <input type="range" min="0" max="1" step="0.05" data-p="threshold" value="{{ panel.threshold }}">
+          <span class="pf-val" data-out="threshold">{{ panel.threshold }}</span>
+          {{ ui.info("En dessous de ce score, un passage est écarté. Plus haut = plus strict (refuse plus souvent de répondre). Plus bas = plus permissif.") }}
+        </div>
+      </div>
 
-      <label>
-        Candidats récupérés (k) : <span data-out="k_candidates">{{ panel.k_candidates }}</span>
-        {{ ui.info("Nombre de passages récupérés avant reranking. Plus élevé = meilleur rappel mais recherche/reranking plus longs.") }}
-        <input type="range" min="1" max="100" step="1" data-p="k_candidates" value="{{ panel.k_candidates }}">
-      </label>
-      <label>
-        Seuil de pertinence : <span data-out="threshold">{{ panel.threshold }}</span>
-        {{ ui.info("En dessous de ce score, un passage est écarté. Plus haut = plus strict (refuse plus souvent de répondre, mais moins d'inventions). Plus bas = plus permissif.") }}
-        <input type="range" min="0" max="1" step="0.05" data-p="threshold" value="{{ panel.threshold }}">
-      </label>
+      <div class="pf">
+        <div class="pf-label">Mode recherche (extraits seuls)</div>
+        <div class="pf-control">
+          <label class="sw"><input type="checkbox" data-p="search_mode" {% if panel.search_mode %}checked{% endif %}><span></span></label>
+          {{ ui.info("Renvoie uniquement les extraits pertinents, sans génération : instantané et zéro risque d'invention.") }}
+        </div>
+      </div>
+      <div class="pf">
+        <div class="pf-label">Afficher les mots-clés des sources</div>
+        <div class="pf-control">
+          <label class="sw"><input type="checkbox" data-show-keywords><span></span></label>
+          {{ ui.info("Affiche sous chaque source les mots-clés extraits à l'indexation (n'affecte pas la recherche).") }}
+        </div>
+      </div>
 
-      <label class="switch">
-        <input type="checkbox" data-p="search_mode" {% if panel.search_mode %}checked{% endif %}>
-        Mode recherche {{ ui.info("Renvoie uniquement les extraits pertinents, sans génération : instantané et zéro risque d'invention.") }}
-      </label>
-      <label class="switch">
-        <input type="checkbox" data-show-keywords>
-        Afficher les mots-clés {{ ui.info("Affiche sous chaque source les mots-clés extraits à l'indexation (n'affecte pas la recherche).") }}
-      </label>
+      <div class="panel-actions">
+        <button type="button" class="btn-mini" data-panel-save>Enregistrer pour ma session</button>
+        <button type="button" class="btn-mini danger" data-panel-reset>Réinitialiser les défauts globaux</button>
+        <span class="panel-saved" data-panel-status></span>
+      </div>
     </div>
-
-    <div class="panel-actions">
-      <button type="button" class="btn-mini" data-panel-save>Enregistrer pour ma session</button>
-      <button type="button" class="btn-mini danger" data-panel-reset>Réinitialiser les défauts globaux</button>
-      <span class="panel-saved" data-panel-status></span>
-    </div>
-  </div>
+  </aside>
 
   <div class="messages" data-messages>
     {% if not messages %}

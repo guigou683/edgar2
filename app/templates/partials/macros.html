@@ -32,7 +32,6 @@
 {% macro info(text) %}<span class="info-i" tabindex="0" data-tip="{{ text }}" aria-label="{{ text }}">i</span>{% endmacro %}
 
 {% macro admin_nav(active) %}
-<a class="admin-back" href="/chat">← Conversations</a>
 <nav class="admin-nav">
   <a href="/admin" class="{{ 'on' if active == 'dashboard' }}">Système</a>
   <a href="/admin/bases" class="{{ 'on' if active == 'bases' }}">Bases</a>

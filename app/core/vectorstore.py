@@ -67,6 +67,17 @@ def collection_exists(base_id: str) -> bool:
     return get_client().collection_exists(collection_name(base_id))
 
 
+def delete_by_file(base_id: str, filename: str) -> None:
+    """Supprime tous les points d'un document (par nom de fichier)."""
+    client = get_client()
+    name = collection_name(base_id)
+    if not client.collection_exists(name):
+        return
+    client.delete(name, points_selector=qm.FilterSelector(
+        filter=qm.Filter(must=[qm.FieldCondition(
+            key="file", match=qm.MatchValue(value=filename))])))
+
+
 def count_points(base_id: str) -> int:
     name = collection_name(base_id)
     client = get_client()

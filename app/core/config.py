@@ -12,6 +12,8 @@ from pathlib import Path
 class Settings:
     """Paramètres applicatifs résolus au démarrage."""
 
+    VERSION: str = "1.2.0"
+
     # --- Services internes ---
     OLLAMA_URL: str = os.environ.get("OLLAMA_URL", "http://ollama:11434")
     QDRANT_URL: str = os.environ.get("QDRANT_URL", "http://qdrant:6333")

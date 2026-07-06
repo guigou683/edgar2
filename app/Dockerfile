@@ -36,7 +36,7 @@ RUN mkdir -p /app/models/nltk /app/models/hf && \
     "from fastembed import SparseTextEmbedding; SparseTextEmbedding(model_name='Qdrant/bm25', cache_dir='/app/models/fastembed')" && \
     python -c "import nltk; [nltk.download(p, download_dir='/app/models/nltk') for p in ['punkt','punkt_tab','averaged_perceptron_tagger','averaged_perceptron_tagger_eng']]" && \
     HF_HUB_OFFLINE=0 TRANSFORMERS_OFFLINE=0 python -c \
-    "from sentence_transformers import CrossEncoder; CrossEncoder('BAAI/bge-reranker-v2-m3', device='cpu')"
+    "from fastembed.rerank.cross_encoder import TextCrossEncoder; TextCrossEncoder(model_name='jinaai/jina-reranker-v2-base-multilingual', cache_dir='/app/models/fastembed')"
 
 # Code applicatif
 COPY . .

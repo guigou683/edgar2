@@ -1,0 +1,105 @@
+{% extends "base.html" %}
+{% block sidebar %}
+<a class="btn-new" href="/chat{% if base_id %}?base={{ base_id }}{% endif %}">← Conversations</a>
+{% if bases %}
+<label class="side-label" for="base-select">Base documentaire</label>
+<select id="base-select" class="base-select" data-base-select data-target="/documents">
+  {% for b in bases %}
+  <option value="{{ b.id }}" {% if b.id == base_id %}selected{% endif %}>{{ b.name }}</option>
+  {% endfor %}
+</select>
+{% endif %}
+{% endblock %}
+
+{% block content %}
+<div class="admin" data-reload-on-job>
+  <h1>Documents</h1>
+
+  {% if base_id %}
+  <div class="doc-search">
+    <input type="text" data-doc-search autocomplete="off"
+           placeholder="Rechercher un document par nom (filtre à la frappe)…">
+    <select data-doc-status>
+      <option value="">Tous les statuts</option>
+      <option value="indexed">Indexés</option>
+      <option value="failed">En échec</option>
+      <option value="pending">En attente</option>
+    </select>
+  </div>
+
+  <p class="help">
+    {{ stats.get('indexed', 0) }} indexé(s) ·
+    <span class="ko">{{ stats.get('failed', 0) }} en échec</span> ·
+    {{ stats.get('pending', 0) }} en attente
+    {% if can_manage and stats.get('failed', 0) %}
+    — <form class="inline-form" data-import-form>
+        <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+        <input type="hidden" name="base_id" value="{{ base_id }}">
+        <input type="hidden" name="strategy" value="ocr_only">
+        <button class="btn-mini" type="submit" data-action="/documents/retry-failed">Relancer les échecs (OCR)</button>
+      </form>
+    {% endif %}
+  </p>
+
+  {% include "partials/job_panel.html" %}
+
+  <div class="admin-card" style="max-width:100%;">
+    <table class="admin-table">
+      <thead><tr>
+        <th>Document</th><th>Statut</th><th>Pages</th><th>Extraits</th>
+        <th>Taille</th><th>Stratégie</th><th>Consulter</th>
+        {% if can_manage %}<th>Gestion</th>{% endif %}
+      </tr></thead>
+      <tbody>
+        {% for d in documents %}
+        {% set is_pdf = d.filename.lower().endswith('.pdf') %}
+        <tr data-doc-row data-filename="{{ d.filename | lower }}" data-status="{{ d.status }}">
+          <td>{{ d.filename }}</td>
+          <td><span class="pill pill-{{ 'active' if d.status=='indexed' else ('suspended' if d.status=='failed' else 'pending') }}">{{ d.status }}</span>
+            {% if d.status == 'failed' and d.error %}<div class="help">{{ d.error }}</div>{% endif %}</td>
+          <td>{{ d.pages or '—' }}</td>
+          <td>{{ d.chunks or '—' }}</td>
+          <td class="help">{{ (d.size // 1024) }} Ko</td>
+          <td class="help">{{ d.strategy or '—' }}</td>
+          <td>
+            {% if is_pdf %}<a href="/doc/{{ base_id }}/{{ d.filename }}" target="_blank" rel="noopener">Ouvrir</a> · {% endif %}
+            <a href="/doc/{{ base_id }}/{{ d.filename }}?download=1">Télécharger</a>
+          </td>
+          {% if can_manage %}
+          <td>
+            <div class="user-actions">
+              <form class="role-form" data-import-form>
+                <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+                <input type="hidden" name="base_id" value="{{ base_id }}">
+                <input type="hidden" name="filename" value="{{ d.filename }}">
+                <select name="strategy">
+                  <option value="auto">auto</option>
+                  <option value="fast">rapide</option>
+                  <option value="ocr_only">OCR</option>
+                </select>
+                <button class="btn-mini" type="submit" data-action="/documents/reanalyze">Ré-analyser</button>
+              </form>
+              <form method="post" action="/documents/delete" data-confirm="Supprimer « {{ d.filename }} » (index + fichier) ?">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+                <input type="hidden" name="base_id" value="{{ base_id }}">
+                <input type="hidden" name="filename" value="{{ d.filename }}">
+                <button class="btn-mini danger" type="submit">Supprimer</button>
+              </form>
+            </div>
+          </td>
+          {% endif %}
+        </tr>
+        {% else %}
+        <tr><td colspan="{{ 8 if can_manage else 7 }}" class="help">Aucun document.</td></tr>
+        {% endfor %}
+        <tr class="doc-noresult" data-doc-empty hidden>
+          <td colspan="{{ 8 if can_manage else 7 }}" class="help">Aucun document ne correspond.</td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+  {% else %}
+  <p class="help">Aucune base documentaire disponible.</p>
+  {% endif %}
+</div>
+{% endblock %}

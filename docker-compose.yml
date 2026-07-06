@@ -12,7 +12,7 @@ services:
   ollama:
     image: ollama/ollama:0.30.9
     volumes:
-      - edgar2_ollama:/root/.ollama          # modèles pré-téléchargés (volume transférable)
+      - ./ollama:/root/.ollama                # modèles (bind mount : dossier sur disque, transfert = copie)
     ports:
       - "${OLLAMA_PORT:-11435}:11434"
     environment:
@@ -34,7 +34,7 @@ services:
   qdrant:
     image: qdrant/qdrant:v1.12.4
     volumes:
-      - edgar2_qdrant:/qdrant/storage
+      - ./qdrant:/qdrant/storage              # base vectorielle (bind mount)
     ports:
       - "${QDRANT_PORT:-7333}:6333"
     restart: unless-stopped
@@ -55,6 +55,8 @@ services:
       - ./data:/app/data                       # SQLite, bases.json, settings.json
       - ./documents:/app/documents             # corpus, un sous-dossier par base
       - ./scripts:/app/scripts:ro              # outils d'exploitation (bootstrap, etc.)
+      - ./app/templates:/app/templates:ro      # pages HTML éditables sans rebuild
+      - ./app/static:/app/static:ro            # CSS / JS / assets éditables sans rebuild
     # Pas de port publié : l'app n'est joignable que par nginx (réseau interne).
     restart: unless-stopped
 
@@ -73,6 +75,4 @@ services:
     restart: unless-stopped
 
 volumes:
-  edgar2_ollama:
-  edgar2_qdrant:
-  edgar2_certs:
+  edgar2_certs:                               # certificat auto-signé (généré sur place)

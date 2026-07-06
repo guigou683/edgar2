@@ -4,14 +4,14 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>{{ title | default("EDGAR v2") }}</title>
-  <link rel="stylesheet" href="/static/css/edgar.css">
+  <link rel="stylesheet" href="/static/css/edgar.css?v={{ asset_v }}">
   <link rel="stylesheet" href="/static/vendor/highlight.css">
   <!-- Libs vendues localement (aucun CDN). Absentes -> fonctionnalités dégradées. -->
   <script src="/static/vendor/htmx.min.js" defer></script>
   <script src="/static/vendor/marked.min.js" defer></script>
   <script src="/static/vendor/dompurify.min.js" defer></script>
   <script src="/static/vendor/highlight.min.js" defer></script>
-  <script src="/static/js/chat.js" defer></script>
+  <script src="/static/js/chat.js?v={{ asset_v }}" defer></script>
 </head>
 <body>
   <button class="sidebar-toggle" type="button" aria-label="Menu" data-sidebar-toggle>☰</button>
@@ -23,6 +23,7 @@
       </div>
 
       {% block sidebar %}
+      {% if user %}<a class="btn-new" href="/chat">← Conversations</a>{% endif %}
       <p class="sidebar-note">Exploration de Documentation Guidée par Agent de Raisonnement</p>
       {% endblock %}
 
@@ -32,12 +33,14 @@
       <div class="account">
         <div class="account-name">{{ user.username }}</div>
         <div class="account-role">{{ user.role }}</div>
+        <a class="account-link" href="/documents">Documents</a>
         {% if user.role in ('contributor', 'admin') %}
         <a class="account-link" href="/contribute">Importer des documents</a>
         {% endif %}
         {% if user.role == 'admin' %}
         <a class="account-link" href="/admin">Administration</a>
         {% endif %}
+        <a class="account-link" href="/about">À propos</a>
         <form method="post" action="/logout">
           <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
           <button class="btn-logout" type="submit">Déconnexion</button>

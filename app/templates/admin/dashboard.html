@@ -16,6 +16,30 @@
   </div>
 
   <div class="admin-card">
+    <h2>Exécution des modèles (GPU / CPU)</h2>
+    {% if runtime.models %}
+    <table class="admin-table">
+      <thead><tr><th>Modèle chargé</th><th>Emplacement</th><th>VRAM allouée</th><th>Taille</th></tr></thead>
+      <tbody>
+        {% for m in runtime.models %}
+        <tr>
+          <td>{{ m.name }}</td>
+          <td>{% if m.where == 'GPU' %}<span class="status-ok">GPU</span>{% elif m.where == 'CPU' %}<span class="status-ko">CPU</span>{% else %}<span>{{ m.where }}</span>{% endif %} ({{ m.pct }} % en VRAM)</td>
+          <td>{{ (m.vram / 1073741824) | round(2) }} Go</td>
+          <td>{{ (m.size / 1073741824) | round(2) }} Go</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+    <p class="help">GPU = modèle entièrement en VRAM (rapide). CPU / GPU+CPU = débordement
+       (plus lent) : la carte est un peu juste pour ce modèle.</p>
+    {% else %}
+    <p class="help">Aucun modèle actuellement chargé (Ollama charge un modèle à la 1ʳᵉ requête).
+       {% if not runtime.ok %}<br>État d'exécution indisponible.{% endif %}</p>
+    {% endif %}
+  </div>
+
+  <div class="admin-card">
     <h2>Bases documentaires</h2>
     <table class="admin-table">
       <thead><tr><th>Base</th><th>Stratégie</th><th>Enrichissement LLM</th><th>Points indexés</th></tr></thead>

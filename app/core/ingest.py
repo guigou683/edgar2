@@ -103,7 +103,8 @@ def index_chunks(base_id: str, doc_hash: str, chunks: list[Chunk],
             },
         })
     vectorstore.upsert_chunks(base_id, points)
-    return {"indexed": len(points), "skipped": False, "reason": ""}
+    pages = len({c.page for c in chunks if c.page is not None})
+    return {"indexed": len(points), "pages": pages, "skipped": False, "reason": ""}
 
 
 def ingest_file(base_id: str, file_path: str, file_name: Optional[str] = None,
@@ -125,4 +126,17 @@ def ingest_file(base_id: str, file_path: str, file_name: Optional[str] = None,
     # Import paresseux pour éviter tout cycle (parsers importe ingest.Chunk).
     from core.parsers import parse_file
     chunks = parse_file(file_path, file_name, strategy)
+    if not chunks:
+        return {"indexed": 0, "pages": 0, "skipped": False,
+                "reason": "aucun texte extrait (type non pris en charge, fichier vide "
+                          "ou scan sans OCR : essayer la stratégie OCR)"}
     return index_chunks(base_id, doc_hash, chunks, top_keywords, skip_if_indexed=False)
+
+
+def reindex_file(base_id: str, file_path: str, file_name: Optional[str] = None,
+                 strategy: str = "fast", top_keywords: int = 8) -> dict[str, Any]:
+    """Ré-analyse un document : purge ses points existants puis réindexe."""
+    name = file_name or Path(file_path).name
+    vectorstore.delete_by_file(base_id, name)
+    return ingest_file(base_id, file_path, file_name=name, strategy=strategy,
+                       top_keywords=top_keywords, skip_if_indexed=False)
