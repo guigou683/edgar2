@@ -504,16 +504,20 @@ def _reconcile_documents(base_id: str) -> None:
     coll = vectorstore.collection_name(base_id)
     exists = client.collection_exists(coll)
     for p in sorted(docs_dir.rglob("*")):
-        if not p.is_file() or p.name in known:
+        if not p.is_file():
+            continue
+        rel = p.relative_to(docs_dir).as_posix()  # préserve les sous-dossiers
+        # rel déjà connu ; ou entrée héritée sous le seul nom (évite un doublon).
+        if rel in known or p.name in known:
             continue
         cnt = 0
         if exists:
             try:
                 cnt = client.count(coll, exact=True, count_filter=qm.Filter(must=[
-                    qm.FieldCondition(key="file", match=qm.MatchValue(value=p.name))])).count
+                    qm.FieldCondition(key="file", match=qm.MatchValue(value=rel))])).count
             except Exception:
                 cnt = 0
-        db.upsert_document(base_id, p.name, "indexed" if cnt else "pending",
+        db.upsert_document(base_id, rel, "indexed" if cnt else "pending",
                            cnt, 0, None, p.stat().st_size, None)
 
 
@@ -533,11 +537,86 @@ async def documents_page(request: Request, base: Optional[str] = None,
         await run_in_threadpool(_reconcile_documents, base_id)
         docs = db.list_documents(base_id)          # tout : filtrage live côté client
         stats = db.count_documents(base_id)
+    overview = _documents_overview(docs)
+    tree = _documents_tree(docs)
     return _render_with_csrf(request, "documents.html", {
         "user": user, "title": "Documents", "bases": all_bases, "base_id": base_id,
-        "documents": docs, "stats": stats, "q": q, "status": status,
+        "documents": docs, "stats": stats, "overview": overview, "tree": tree,
+        "q": q, "status": status,
         "can_manage": auth.has_role(user, auth.ROLE_CONTRIBUTOR),
     })
+
+
+def _documents_tree(docs: list[dict]) -> dict:
+    """Construit un arbre de dossiers/fichiers à partir des chemins relatifs des
+    documents (« sous-dossier/fichier.pdf »). Chaque nœud porte son total récursif."""
+    root: dict = {"dirs": {}, "files": [], "count": 0}
+    for d in docs:
+        parts = (d.get("filename") or "").split("/")
+        node = root
+        for part in parts[:-1]:
+            node = node["dirs"].setdefault(part, {"dirs": {}, "files": [], "count": 0})
+        node["files"].append(d)
+
+    def _count(n: dict) -> int:
+        total = len(n["files"]) + sum(_count(c) for c in n["dirs"].values())
+        n["count"] = total
+        return total
+
+    _count(root)
+    return root
+
+
+def _human_size(n: int) -> str:
+    for unit, div in (("Go", 1073741824), ("Mo", 1048576), ("Ko", 1024)):
+        if n >= div:
+            return f"{n / div:.1f} {unit}"
+    return f"{n} o"
+
+
+def _documents_overview(docs: list[dict]) -> dict:
+    """Agrège les statistiques d'une base : totaux + répartitions (stratégie, statut)."""
+    from collections import Counter
+    by_strategy = Counter((d.get("strategy") or "—") for d in docs)
+    by_status = Counter((d.get("status") or "?") for d in docs)
+    size = sum(d.get("size") or 0 for d in docs)
+    return {
+        "files": len(docs),
+        "chunks": sum(d.get("chunks") or 0 for d in docs),
+        "pages": sum(d.get("pages") or 0 for d in docs),
+        "size": size,
+        "size_h": _human_size(size),
+        "by_strategy": dict(by_strategy),
+        "by_status": dict(by_status),
+    }
+
+
+@app.get("/documents/summary")
+async def document_summary(request: Request, base: str, file: str):
+    """Flux SSE : synthèse d'un document (LLM) à partir de tous ses extraits indexés."""
+    if not auth.current_user(request):
+        return JSONResponse({"error": "authentification requise"}, status_code=401)
+    if not bases.get_base(base):
+        return JSONResponse({"error": "base inconnue"}, status_code=404)
+    name = file.strip().replace("\\", "/")
+    payloads = await run_in_threadpool(vectorstore.chunks_for_file, base, name)
+
+    def gen():
+        if not payloads:
+            yield _sse("error", {"message": "Aucun extrait indexé pour ce document."})
+            yield _sse("done", {})
+            return
+        _, truncated = rag.build_summary_prompt(name, payloads)
+        yield _sse("meta", {"chunks": len(payloads), "truncated": truncated})
+        try:
+            for tok in rag.summarize_stream(name, payloads):
+                yield _sse("token", {"t": tok})
+        except Exception as exc:
+            yield _sse("error", {"message": f"Erreur de génération ({type(exc).__name__})."})
+        yield _sse("done", {})
+
+    return StreamingResponse(gen(), media_type="text/event-stream",
+                             headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"})
 
 
 @app.post("/documents/delete")
@@ -547,7 +626,8 @@ async def documents_delete(request: Request, base_id: str = Form(...),
     if resp:
         return resp
     if _check_csrf(request, csrf_token) and bases.get_base(base_id):
-        name = sanitize_filename(filename)
+        # Identifiant relatif (sous-dossiers conservés) ; safe_join bloque toute évasion.
+        name = filename.strip().replace("\\", "/")
         vectorstore.delete_by_file(base_id, name)
         try:
             path = safe_join(settings.DOCUMENTS_DIR, base_id, name)
@@ -571,7 +651,8 @@ async def documents_reanalyze(request: Request, base_id: str = Form(...),
     base = bases.get_base(base_id)
     if _check_csrf(request, csrf_token) and base:
         try:
-            path = safe_join(settings.DOCUMENTS_DIR, base_id, sanitize_filename(filename))
+            path = safe_join(settings.DOCUMENTS_DIR, base_id,
+                             filename.strip().replace("\\", "/"))
         except ValueError:
             path = None
         if path and path.is_file():

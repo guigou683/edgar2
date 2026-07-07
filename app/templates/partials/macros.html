@@ -6,7 +6,7 @@
   <details class="source">
     <summary>
       <span class="src-n">[{{ s.n }}]</span>
-      <span class="src-file">{{ s.file }}</span>
+      <span class="src-file" title="{{ s.file }}">{{ s.file.split('/')[-1] if s.file else s.file }}</span>
       {% if s.page %}<span class="src-meta">· p.{{ s.page }}</span>{% endif %}
       {% if s.section %}<span class="src-meta">· {{ s.section }}</span>{% endif %}
       {% if s.score is not none %}<span class="src-score">{{ (s.score * 100) | round }} %</span>{% endif %}

@@ -11,11 +11,107 @@
 {% endif %}
 {% endblock %}
 
+{# --- Camembert (donut) SVG-less : conic-gradient, 100 % offline --- #}
+{% macro donut(title, data, palette) %}
+{% set total = data.values() | sum %}
+<div class="stat-pie">
+  <div class="stat-pie-title">{{ title }}</div>
+  {% if total %}
+  {% set ns = namespace(acc=0, stops=[]) %}
+  {% for label, n in data.items() %}
+    {% set start = (ns.acc / total * 360) | round(2) %}
+    {% set ns.acc = ns.acc + n %}
+    {% set end = (ns.acc / total * 360) | round(2) %}
+    {% set _ = ns.stops.append(palette.get(label, '#7a8296') ~ ' ' ~ start ~ 'deg ' ~ end ~ 'deg') %}
+  {% endfor %}
+  <div class="pie-row">
+    <div class="donut" style="background: conic-gradient({{ ns.stops | join(', ') }});"></div>
+    <ul class="stat-legend">
+      {% for label, n in data.items() %}
+      <li><span class="legend-dot" style="background: {{ palette.get(label, '#7a8296') }}"></span>
+        <span class="legend-label">{{ label }}</span>
+        <b>{{ n }}</b> <span class="help">({{ (n / total * 100) | round }} %)</span></li>
+      {% endfor %}
+    </ul>
+  </div>
+  {% else %}<div class="help">Aucune donnée.</div>{% endif %}
+</div>
+{% endmacro %}
+
+{# --- Ligne fichier (réutilisée dans l'arbre) --- #}
+{% macro file_row(d, base_id, can_manage, csrf_token, depth) %}
+{% set is_pdf = d.filename.lower().endswith('.pdf') %}
+{% set short = d.filename.split('/')[-1] %}
+<div class="tree-file" data-doc-row data-filename="{{ d.filename | lower }}" data-status="{{ d.status }}"
+     style="--depth: {{ depth }}">
+  <span class="tf-name" title="{{ d.filename }}">📄 {{ short }}</span>
+  <span class="tf-status"><span class="pill pill-{{ 'active' if d.status=='indexed' else ('suspended' if d.status=='failed' else 'pending') }}">{{ d.status }}</span></span>
+  <span class="tf-meta help">{{ d.pages or '—' }} p · {{ d.chunks or '—' }} extr · {{ (d.size // 1024) }} Ko · {{ d.strategy or '—' }}</span>
+  <span class="tf-actions">
+    {% if is_pdf %}<a href="/doc/{{ base_id }}/{{ d.filename }}" target="_blank" rel="noopener">Ouvrir</a>{% endif %}
+    <a href="/doc/{{ base_id }}/{{ d.filename }}?download=1">Télécharger</a>
+    {% if d.chunks %}<button type="button" class="link-btn" data-summary
+            data-file="{{ d.filename }}" data-base="{{ base_id }}">Résumé</button>{% endif %}
+    {% if can_manage %}
+    <form class="inline-form" data-import-form>
+      <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+      <input type="hidden" name="base_id" value="{{ base_id }}">
+      <input type="hidden" name="filename" value="{{ d.filename }}">
+      <select name="strategy" aria-label="Stratégie de ré-analyse">
+        <option value="auto">auto</option><option value="fast">rapide</option><option value="ocr_only">OCR</option>
+      </select>
+      <button class="btn-mini" type="submit" data-action="/documents/reanalyze">Ré-analyser</button>
+    </form>
+    <form method="post" action="/documents/delete" data-confirm="Supprimer « {{ d.filename }} » (index + fichier) ?">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+      <input type="hidden" name="base_id" value="{{ base_id }}">
+      <input type="hidden" name="filename" value="{{ d.filename }}">
+      <button class="btn-mini danger" type="submit">Supprimer</button>
+    </form>
+    {% endif %}
+  </span>
+  {% if d.status == 'failed' and d.error %}<span class="tf-error help">{{ d.error }}</span>{% endif %}
+</div>
+{% endmacro %}
+
+{# --- Nœud d'arbre : sous-dossiers repliables puis fichiers --- #}
+{% macro tree_node(node, base_id, can_manage, csrf_token, depth) %}
+{% for name, child in node.dirs | dictsort %}
+<details class="tree-dir" data-doc-node>
+  <summary style="--depth: {{ depth }}">
+    <span class="tree-caret">▸</span>
+    <span class="tree-folder">📁 {{ name }}</span>
+    <span class="tree-count">{{ child.count }}</span>
+  </summary>
+  {{ tree_node(child, base_id, can_manage, csrf_token, depth + 1) }}
+</details>
+{% endfor %}
+{% for d in node.files %}
+{{ file_row(d, base_id, can_manage, csrf_token, depth) }}
+{% endfor %}
+{% endmacro %}
+
 {% block content %}
 <div class="admin" data-reload-on-job>
   <h1>Documents</h1>
 
   {% if base_id %}
+  {% set status_colors = {'indexed': '#4f9e7a', 'failed': '#c0566a', 'pending': '#b8923f', '?': '#7a8296'} %}
+  {% set strat_colors = {'fast': '#4a7bc0', 'ocr_only': '#8a5bc0', 'fast (OCR auto)': '#3fa7bd', '—': '#7a8296'} %}
+
+  <div class="doc-overview">
+    <div class="stat-tiles">
+      <div class="stat-tile"><div class="stat-num">{{ overview.files }}</div><div class="stat-lbl">Fichiers</div></div>
+      <div class="stat-tile"><div class="stat-num">{{ overview.chunks }}</div><div class="stat-lbl">Extraits</div></div>
+      <div class="stat-tile"><div class="stat-num">{{ overview.pages }}</div><div class="stat-lbl">Pages</div></div>
+      <div class="stat-tile"><div class="stat-num">{{ overview.size_h }}</div><div class="stat-lbl">Taille des fichiers</div></div>
+    </div>
+    <div class="stat-pies">
+      {{ donut("Répartition par statut", overview.by_status, status_colors) }}
+      {{ donut("Répartition par stratégie", overview.by_strategy, strat_colors) }}
+    </div>
+  </div>
+
   <div class="doc-search">
     <input type="text" data-doc-search autocomplete="off"
            placeholder="Rechercher un document par nom (filtre à la frappe)…">
@@ -25,78 +121,45 @@
       <option value="failed">En échec</option>
       <option value="pending">En attente</option>
     </select>
-  </div>
-
-  <p class="help">
-    {{ stats.get('indexed', 0) }} indexé(s) ·
-    <span class="ko">{{ stats.get('failed', 0) }} en échec</span> ·
-    {{ stats.get('pending', 0) }} en attente
     {% if can_manage and stats.get('failed', 0) %}
-    — <form class="inline-form" data-import-form>
-        <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
-        <input type="hidden" name="base_id" value="{{ base_id }}">
-        <input type="hidden" name="strategy" value="ocr_only">
-        <button class="btn-mini" type="submit" data-action="/documents/retry-failed">Relancer les échecs (OCR)</button>
-      </form>
+    <form class="inline-form" data-import-form>
+      <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+      <input type="hidden" name="base_id" value="{{ base_id }}">
+      <input type="hidden" name="strategy" value="ocr_only">
+      <button class="btn-mini" type="submit" data-action="/documents/retry-failed">Relancer les échecs (OCR)</button>
+    </form>
     {% endif %}
-  </p>
+  </div>
 
   {% include "partials/job_panel.html" %}
 
-  <div class="admin-card" style="max-width:100%;">
-    <table class="admin-table">
-      <thead><tr>
-        <th>Document</th><th>Statut</th><th>Pages</th><th>Extraits</th>
-        <th>Taille</th><th>Stratégie</th><th>Consulter</th>
-        {% if can_manage %}<th>Gestion</th>{% endif %}
-      </tr></thead>
-      <tbody>
-        {% for d in documents %}
-        {% set is_pdf = d.filename.lower().endswith('.pdf') %}
-        <tr data-doc-row data-filename="{{ d.filename | lower }}" data-status="{{ d.status }}">
-          <td>{{ d.filename }}</td>
-          <td><span class="pill pill-{{ 'active' if d.status=='indexed' else ('suspended' if d.status=='failed' else 'pending') }}">{{ d.status }}</span>
-            {% if d.status == 'failed' and d.error %}<div class="help">{{ d.error }}</div>{% endif %}</td>
-          <td>{{ d.pages or '—' }}</td>
-          <td>{{ d.chunks or '—' }}</td>
-          <td class="help">{{ (d.size // 1024) }} Ko</td>
-          <td class="help">{{ d.strategy or '—' }}</td>
-          <td>
-            {% if is_pdf %}<a href="/doc/{{ base_id }}/{{ d.filename }}" target="_blank" rel="noopener">Ouvrir</a> · {% endif %}
-            <a href="/doc/{{ base_id }}/{{ d.filename }}?download=1">Télécharger</a>
-          </td>
-          {% if can_manage %}
-          <td>
-            <div class="user-actions">
-              <form class="role-form" data-import-form>
-                <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
-                <input type="hidden" name="base_id" value="{{ base_id }}">
-                <input type="hidden" name="filename" value="{{ d.filename }}">
-                <select name="strategy">
-                  <option value="auto">auto</option>
-                  <option value="fast">rapide</option>
-                  <option value="ocr_only">OCR</option>
-                </select>
-                <button class="btn-mini" type="submit" data-action="/documents/reanalyze">Ré-analyser</button>
-              </form>
-              <form method="post" action="/documents/delete" data-confirm="Supprimer « {{ d.filename }} » (index + fichier) ?">
-                <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
-                <input type="hidden" name="base_id" value="{{ base_id }}">
-                <input type="hidden" name="filename" value="{{ d.filename }}">
-                <button class="btn-mini danger" type="submit">Supprimer</button>
-              </form>
-            </div>
-          </td>
-          {% endif %}
-        </tr>
-        {% else %}
-        <tr><td colspan="{{ 8 if can_manage else 7 }}" class="help">Aucun document.</td></tr>
-        {% endfor %}
-        <tr class="doc-noresult" data-doc-empty hidden>
-          <td colspan="{{ 8 if can_manage else 7 }}" class="help">Aucun document ne correspond.</td>
-        </tr>
-      </tbody>
-    </table>
+  <div class="admin-card doc-tree-card">
+    {% if documents %}
+    {% if tree.dirs %}
+    <div class="tree-toolbar">
+      <button type="button" class="btn-mini" data-tree-collapse>▸ Tout replier</button>
+      <button type="button" class="btn-mini" data-tree-expand>▾ Tout déplier</button>
+    </div>
+    {% endif %}
+    <div class="doc-tree" data-doc-tree>
+      {{ tree_node(tree, base_id, can_manage, csrf_token, 0) }}
+      <div class="doc-noresult help" data-doc-empty hidden>Aucun document ne correspond.</div>
+    </div>
+    {% else %}
+    <p class="help">Aucun document dans cette base.</p>
+    {% endif %}
+  </div>
+
+  {# Modale de résumé LLM #}
+  <div class="doc-modal" data-summary-modal hidden>
+    <div class="doc-modal-box">
+      <div class="doc-modal-head">
+        <span class="doc-modal-title" data-summary-title>Résumé</span>
+        <button type="button" class="panel-close" data-summary-close aria-label="Fermer">×</button>
+      </div>
+      <div class="doc-modal-meta help" data-summary-meta></div>
+      <div class="doc-modal-body md-content" data-summary-body></div>
+    </div>
   </div>
   {% else %}
   <p class="help">Aucune base documentaire disponible.</p>

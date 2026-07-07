@@ -341,6 +341,62 @@ a.btn-mini { text-decoration: none; display: inline-block; }
 .inline-form { display: inline; }
 .inline-form .btn-mini { padding: 3px 8px; }
 
+/* --- En-tête statistiques d'une base --- */
+.doc-overview { display: flex; gap: 18px; flex-wrap: wrap; align-items: stretch; margin: 4px 0 18px; }
+.stat-tiles { display: grid; grid-template-columns: repeat(2, minmax(120px, 1fr)); gap: 10px; align-content: start; }
+.stat-tile { background: var(--bg-elev); border: 1px solid var(--border); border-radius: 12px; padding: 12px 16px; min-width: 120px; }
+.stat-num { font-size: 22px; font-weight: 700; color: var(--text); }
+.stat-lbl { font-size: 12px; color: var(--text-muted); margin-top: 2px; }
+.stat-pies { display: flex; gap: 18px; flex-wrap: wrap; flex: 1; }
+.stat-pie { background: var(--bg-elev); border: 1px solid var(--border); border-radius: 12px; padding: 12px 16px; flex: 1; min-width: 240px; }
+.stat-pie-title { font-size: 13px; color: var(--text-muted); margin-bottom: 10px; }
+.pie-row { display: flex; align-items: center; gap: 16px; }
+.donut { width: 92px; height: 92px; border-radius: 50%; flex-shrink: 0; position: relative; }
+.donut::after { content: ""; position: absolute; inset: 26%; background: var(--bg-elev); border-radius: 50%; }
+.stat-legend { list-style: none; margin: 0; padding: 0; font-size: 13px; display: flex; flex-direction: column; gap: 4px; }
+.stat-legend li { display: flex; align-items: center; gap: 6px; }
+.legend-dot { width: 10px; height: 10px; border-radius: 3px; flex-shrink: 0; }
+.legend-label { color: var(--text); }
+
+/* --- Arborescence des documents --- */
+.doc-tree-card { max-width: 100%; padding: 8px; }
+.tree-toolbar { display: flex; gap: 8px; padding: 4px 6px 10px; border-bottom: 1px solid var(--border); margin-bottom: 6px; }
+.doc-tree { display: flex; flex-direction: column; }
+.tree-dir > summary { list-style: none; cursor: pointer; display: flex; align-items: center; gap: 8px;
+  padding: 7px 8px; padding-left: calc(var(--depth) * 18px + 8px); border-radius: 8px; user-select: none; }
+.tree-dir > summary::-webkit-details-marker { display: none; }
+.tree-dir > summary:hover { background: var(--bg); }
+.tree-caret { display: inline-block; transition: transform .15s ease; color: var(--text-muted); }
+.tree-dir[open] > summary .tree-caret { transform: rotate(90deg); }
+.tree-folder { font-weight: 600; color: var(--text); }
+.tree-count { font-size: 11px; color: var(--text-muted); background: var(--bg); border: 1px solid var(--border);
+  border-radius: 10px; padding: 0 8px; }
+.tree-file { display: flex; align-items: center; gap: 12px; flex-wrap: wrap;
+  padding: 6px 8px; padding-left: calc(var(--depth) * 18px + 30px); border-radius: 8px; }
+.tree-file:hover { background: var(--bg); }
+.tf-name { flex: 1; min-width: 200px; color: var(--text); }
+.tf-status { flex-shrink: 0; }
+.tf-meta { flex-shrink: 0; }
+.tf-actions { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.tf-error { flex-basis: 100%; color: #f3b6bd; }
+.link-btn { background: none; border: none; color: var(--or); cursor: pointer; padding: 0; font-size: 13px; }
+.link-btn:hover { text-decoration: underline; }
+.doc-noresult { padding: 12px 8px; }
+
+/* --- Modale de résumé --- */
+.doc-modal { position: fixed; inset: 0; background: rgba(0,0,0,.55); display: none; align-items: center;
+  justify-content: center; z-index: 50; padding: 24px; }
+.doc-modal:not([hidden]) { display: flex; }
+.doc-modal-box { background: var(--bg-elev); border: 1px solid var(--border); border-radius: 14px;
+  width: min(760px, 100%); max-height: 82vh; display: flex; flex-direction: column; }
+.doc-modal-head { display: flex; align-items: center; justify-content: space-between; gap: 12px;
+  padding: 14px 18px; border-bottom: 1px solid var(--border); }
+.doc-modal-title { font-weight: 600; }
+.doc-modal-meta { padding: 8px 18px 0; }
+.doc-modal-body { padding: 12px 18px 18px; overflow-y: auto; line-height: 1.6; }
+.doc-modal-meta .spin, .summary-loading .spin { vertical-align: middle; margin-right: 6px; }
+.summary-loading { display: flex; align-items: center; gap: 8px; color: var(--text-muted); padding: 12px 0; }
+
 /* --- Page À propos --- */
 .about { display: flex; justify-content: center; padding: 6vh 24px; overflow-y: auto; height: 100vh; }
 .about-card { max-width: 620px; width: 100%; height: fit-content; background: var(--bg-elev); border: 1px solid var(--border); border-radius: 14px; padding: 32px; }

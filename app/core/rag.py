@@ -88,3 +88,50 @@ def assemble(question: str, out: dict[str, Any], params: SearchParams) -> dict[s
 def generate_answer(prompt: str, model: str | None = None) -> Iterator[str]:
     """Génère la réponse en streaming (jetons) à partir du prompt assemblé."""
     yield from llm.generate_stream(prompt, system=SYSTEM_PROMPT, model=model)
+
+
+# --------------------------------------------------------------------------
+# Résumé d'un document (tous ses extraits indexés)
+# --------------------------------------------------------------------------
+SUMMARY_SYSTEM = (
+    "Tu es EDGAR, un assistant documentaire de la Marine nationale. "
+    "Tu produis des synthèses fidèles, en français, uniquement à partir des extraits fournis. "
+    "N'invente rien et n'ajoute aucune information absente des extraits."
+)
+
+# Budget de caractères transmis au LLM (garde-fou contexte pour un modèle 7B).
+SUMMARY_MAX_CHARS = 12000
+
+
+def build_summary_prompt(filename: str, payloads: list[dict[str, Any]]) -> tuple[str, bool]:
+    """Assemble les extraits d'un document en un prompt de synthèse.
+
+    Renvoie (prompt, tronqué) — `tronqué` indique que le document dépassait le budget."""
+    parts, total, truncated = [], 0, False
+    for p in payloads:
+        t = (p.get("text") or "").strip()
+        if not t:
+            continue
+        page = p.get("page")
+        block = (f"[p.{page}] " if page else "") + t
+        if total + len(block) > SUMMARY_MAX_CHARS:
+            truncated = True
+            break
+        parts.append(block)
+        total += len(block)
+    context = "\n\n".join(parts)
+    prompt = (
+        f"Document : « {filename} ».\n\n"
+        f"Extraits indexés du document :\n{context}\n\n"
+        "Rédige une synthèse structurée et fidèle de ce document en français : "
+        "objet du document, points clés, et éléments notables. "
+        "Appuie-toi uniquement sur les extraits ci-dessus."
+    )
+    return prompt, truncated
+
+
+def summarize_stream(filename: str, payloads: list[dict[str, Any]],
+                     model: str | None = None) -> Iterator[str]:
+    """Génère en streaming la synthèse d'un document à partir de ses extraits."""
+    prompt, _ = build_summary_prompt(filename, payloads)
+    yield from llm.generate_stream(prompt, system=SUMMARY_SYSTEM, model=model)

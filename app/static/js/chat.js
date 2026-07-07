@@ -36,7 +36,9 @@ function buildSources(sources, baseId) {
     const d = el("details", "source");
     const sum = el("summary");
     sum.appendChild(el("span", "src-n", "[" + s.n + "]"));
-    sum.appendChild(el("span", "src-file", s.file || ""));
+    const sf = el("span", "src-file", (s.file || "").split("/").pop());
+    if (s.file) sf.title = s.file;  // chemin complet (sous-dossier) au survol
+    sum.appendChild(sf);
     if (s.page) sum.appendChild(el("span", "src-meta", "· p." + s.page));
     if (s.section) sum.appendChild(el("span", "src-meta", "· " + s.section));
     if (s.score !== null && s.score !== undefined)
@@ -51,7 +53,9 @@ function buildSources(sources, baseId) {
     }
     const actions = el("div", "source-actions");
     const file = s.file || "";
-    const url = "/doc/" + encodeURIComponent(baseId) + "/" + encodeURIComponent(file);
+    // Encode chaque segment mais conserve les « / » des sous-dossiers.
+    const encPath = file.split("/").map(encodeURIComponent).join("/");
+    const url = "/doc/" + encodeURIComponent(baseId) + "/" + encPath;
     const page = s.page || 1;
     if (file.toLowerCase().endsWith(".pdf")) {
       const open = el("a", null, "Ouvrir p." + page);
@@ -387,11 +391,12 @@ document.addEventListener("DOMContentLoaded", () => {
     });
   });
 
-  // --- Recherche de documents : filtre live (nom + statut) ---
+  // --- Recherche de documents : filtre live (nom + statut), arbre replié ---
   const docSearch = document.querySelector("[data-doc-search]");
   const docStatus = document.querySelector("[data-doc-status]");
   if (docSearch || docStatus) {
     const rows = Array.from(document.querySelectorAll("[data-doc-row]"));
+    const folders = Array.from(document.querySelectorAll("[data-doc-node]"));
     const empty = document.querySelector("[data-doc-empty]");
     const applyFilter = () => {
       const q = (docSearch ? docSearch.value : "").trim().toLowerCase();
@@ -404,10 +409,75 @@ document.addEventListener("DOMContentLoaded", () => {
         r.hidden = !show;
         if (show) visible++;
       });
+      // Masque les dossiers sans fichier visible ; ouvre l'arbre pendant un filtre.
+      folders.forEach((f) => {
+        const anyVisible = !!f.querySelector("[data-doc-row]:not([hidden])");
+        f.hidden = !anyVisible;
+        if (q || st) f.open = anyVisible;
+      });
       if (empty) empty.hidden = visible !== 0 || rows.length === 0;
     };
     if (docSearch) docSearch.addEventListener("input", applyFilter);
     if (docStatus) docStatus.addEventListener("change", applyFilter);
+  }
+
+  // --- Arbre documents : tout replier / tout déplier ---
+  const treeCollapse = document.querySelector("[data-tree-collapse]");
+  const treeExpand = document.querySelector("[data-tree-expand]");
+  const setAllDirs = (open) => document.querySelectorAll(".tree-dir").forEach((d) => { d.open = open; });
+  if (treeCollapse) treeCollapse.addEventListener("click", () => setAllDirs(false));
+  if (treeExpand) treeExpand.addEventListener("click", () => setAllDirs(true));
+
+  // --- Résumé LLM d'un document (modale + streaming SSE) ---
+  const summaryModal = document.querySelector("[data-summary-modal]");
+  if (summaryModal) {
+    const title = summaryModal.querySelector("[data-summary-title]");
+    const meta = summaryModal.querySelector("[data-summary-meta]");
+    const body = summaryModal.querySelector("[data-summary-body]");
+    let es = null;
+    const close = () => {
+      if (es) { es.close(); es = null; }
+      summaryModal.hidden = true;
+    };
+    summaryModal.querySelector("[data-summary-close]").addEventListener("click", close);
+    summaryModal.addEventListener("click", (e) => { if (e.target === summaryModal) close(); });
+    document.querySelectorAll("[data-summary]").forEach((btn) => {
+      btn.addEventListener("click", () => {
+        const file = btn.getAttribute("data-file");
+        const base = btn.getAttribute("data-base");
+        if (es) es.close();
+        title.textContent = "Résumé — " + file.split("/").pop();
+        meta.innerHTML = '<span class="spin"></span> Récupération des extraits…';
+        body.innerHTML = '<div class="summary-loading"><span class="spin"></span>'
+                       + ' Génération de la synthèse en cours…</div>';
+        summaryModal.hidden = false;
+        let buffer = "", metaText = "";
+        const url = "/documents/summary?base=" + encodeURIComponent(base)
+                  + "&file=" + encodeURIComponent(file);
+        es = new EventSource(url);
+        es.addEventListener("meta", (e) => {
+          const d = JSON.parse(e.data);
+          metaText = "Synthèse de " + d.chunks + " extrait(s)"
+            + (d.truncated ? " (document volumineux : début synthétisé)." : ".");
+          meta.innerHTML = '<span class="spin"></span> ' + metaText;
+        });
+        es.addEventListener("token", (e) => {
+          if (!buffer) { body.textContent = ""; meta.textContent = metaText; }  // 1er jeton : on retire le spinner
+          buffer += JSON.parse(e.data).t;
+          renderMarkdown(body, buffer);
+        });
+        es.addEventListener("error", (e) => {
+          let msg = "Erreur lors de la génération du résumé.";
+          try { msg = JSON.parse(e.data).message; } catch (_) {}
+          meta.textContent = msg;
+          if (!buffer) body.textContent = "";
+        });
+        es.addEventListener("done", () => {
+          if (!buffer) body.textContent = "Aucun contenu à synthétiser.";
+          if (es) { es.close(); es = null; }
+        });
+      });
+    });
   }
 
   // --- Préréglages Rapide / Précis ---

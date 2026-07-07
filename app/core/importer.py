@@ -14,9 +14,22 @@ from pathlib import Path
 from typing import Any, Optional
 
 from core import db, ingest
+from core.config import settings
 
 _jobs: dict[str, dict[str, Any]] = {}
 _lock = threading.Lock()
+
+
+def rel_doc_id(base_id: str, path: Path) -> str:
+    """Identifiant d'un document = son chemin RELATIF au dossier de la base
+    (ex. « PDF-tiny/0001.pdf »), en séparateurs POSIX. Préserve les sous-dossiers
+    dans le registre, les liens /doc/... et le payload Qdrant. Repli sur le nom seul
+    si le fichier est hors du dossier de la base."""
+    try:
+        base_dir = (settings.DOCUMENTS_DIR / base_id).resolve()
+        return path.resolve().relative_to(base_dir).as_posix()
+    except (ValueError, OSError):
+        return path.name
 
 
 def get_job(job_id: str) -> Optional[dict[str, Any]]:
@@ -47,21 +60,22 @@ def record_result(base_id: str, filename: str, rep: dict[str, Any],
 def _worker(job_id: str, base_id: str, paths: list[Path], strategy: str,
             reindex: bool) -> None:
     for path in paths:
+        doc_id = rel_doc_id(base_id, path)  # « sous-dossier/fichier.pdf » (préserve l'arbo)
         with _lock:
-            _jobs[job_id]["current"] = path.name
+            _jobs[job_id]["current"] = doc_id
         try:
             size = path.stat().st_size
         except OSError:
             size = 0
         try:
             if reindex:
-                rep = ingest.reindex_file(base_id, str(path), file_name=path.name, strategy=strategy)
+                rep = ingest.reindex_file(base_id, str(path), file_name=doc_id, strategy=strategy)
             else:
-                rep = ingest.ingest_file(base_id, str(path), file_name=path.name, strategy=strategy)
+                rep = ingest.ingest_file(base_id, str(path), file_name=doc_id, strategy=strategy)
         except Exception as exc:  # capture la raison précise de l'échec
             rep = {"indexed": 0, "skipped": False,
                    "reason": f"{type(exc).__name__}: {exc}"[:400]}
-        issue = record_result(base_id, path.name, rep, strategy, size)
+        issue = record_result(base_id, doc_id, rep, strategy, size)
         with _lock:
             j = _jobs[job_id]
             j["done"] += 1
@@ -72,7 +86,7 @@ def _worker(job_id: str, base_id: str, paths: list[Path], strategy: str,
                 j["bytes"] += size  # taille cumulée des documents effectivement ajoutés
             else:
                 j["failed"] += 1
-                j["failures"].append({"file": path.name, "reason": rep.get("reason", "")})
+                j["failures"].append({"file": doc_id, "reason": rep.get("reason", "")})
     with _lock:
         _jobs[job_id]["current"] = ""
         _jobs[job_id]["status"] = "done"

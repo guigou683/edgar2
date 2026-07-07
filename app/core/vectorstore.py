@@ -78,6 +78,28 @@ def delete_by_file(base_id: str, filename: str) -> None:
             key="file", match=qm.MatchValue(value=filename))])))
 
 
+def chunks_for_file(base_id: str, filename: str) -> list[dict[str, Any]]:
+    """Renvoie tous les extraits (payloads) d'un document, triés par page puis
+    par ordre d'apparition. Sert au résumé « tout le document »."""
+    client = get_client()
+    name = collection_name(base_id)
+    if not client.collection_exists(name):
+        return []
+    flt = qm.Filter(must=[qm.FieldCondition(key="file", match=qm.MatchValue(value=filename))])
+    payloads: list[dict[str, Any]] = []
+    offset = None
+    while True:
+        points, offset = client.scroll(
+            name, scroll_filter=flt, with_payload=True, with_vectors=False,
+            limit=256, offset=offset)
+        payloads.extend(p.payload for p in points)
+        if offset is None:
+            break
+    payloads.sort(key=lambda p: ((p.get("page") if p.get("page") is not None else 1_000_000),
+                                 (p.get("chunk_index") if p.get("chunk_index") is not None else 0)))
+    return payloads
+
+
 def count_points(base_id: str) -> int:
     name = collection_name(base_id)
     client = get_client()
