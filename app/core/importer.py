@@ -69,6 +69,7 @@ def _worker(job_id: str, base_id: str, paths: list[Path], strategy: str,
                 j["skipped"] += 1
             elif issue == "indexed":
                 j["succeeded"] += 1
+                j["bytes"] += size  # taille cumulée des documents effectivement ajoutés
             else:
                 j["failed"] += 1
                 j["failures"].append({"file": path.name, "reason": rep.get("reason", "")})
@@ -85,7 +86,7 @@ def start(base_id: str, paths: list[str], strategy: str, reindex: bool = False) 
     with _lock:
         _jobs[job_id] = {
             "id": job_id, "base_id": base_id, "total": len(files), "done": 0,
-            "succeeded": 0, "skipped": 0, "failed": 0, "current": "",
+            "succeeded": 0, "skipped": 0, "failed": 0, "current": "", "bytes": 0,
             "failures": [], "status": "running", "started": time.time(),
         }
     threading.Thread(target=_worker, args=(job_id, base_id, files, strategy, reindex),

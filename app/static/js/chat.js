@@ -322,6 +322,18 @@ document.addEventListener("DOMContentLoaded", () => {
     const s = Math.max(0, Math.round(el / job.done * (job.total - job.done)));
     return "≈ " + (s >= 60 ? Math.round(s / 60) + " min" : s + " s") + " restant";
   }
+  function fmtBytes(n) {
+    n = n || 0;
+    if (n < 1024) return n + " o";
+    if (n < 1048576) return (n / 1024).toFixed(0) + " Ko";
+    if (n < 1073741824) return (n / 1048576).toFixed(1) + " Mo";
+    return (n / 1073741824).toFixed(2) + " Go";
+  }
+  function fmtDur(s) {
+    s = Math.max(0, s || 0);
+    if (s < 60) return (Math.round(s * 10) / 10) + " s";
+    return Math.floor(s / 60) + " min " + Math.round(s % 60) + " s";
+  }
   function renderJob(job) {
     if (!jobPanel) return;
     jobPanel.hidden = false;
@@ -335,6 +347,15 @@ document.addEventListener("DOMContentLoaded", () => {
     q("[data-job-eta]").textContent = fmtETA(job);
     q(".job-title").textContent = job.status === "done" ? "Import terminé" : "Import en cours…";
     q("[data-job-current]").textContent = job.status === "done" ? "Terminé." : (job.current ? "En cours : " + job.current : "");
+    const stats = q("[data-job-stats]");
+    if (job.status === "done") {
+      const dur = (job.finished && job.started) ? fmtDur(job.finished - job.started) : "—";
+      stats.hidden = false;
+      stats.innerHTML = "⏱ Durée totale : <b>" + dur + "</b> · 💾 Taille indexée : <b>"
+                      + fmtBytes(job.bytes) + "</b>";
+    } else {
+      stats.hidden = true;
+    }
     if (job.failures && job.failures.length) {
       q("[data-job-failures]").hidden = false;
       q("[data-job-failure-list]").innerHTML = job.failures
