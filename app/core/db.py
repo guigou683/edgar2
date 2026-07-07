@@ -332,6 +332,14 @@ def delete_conversation(conv_id: int) -> None:
         conn.execute("DELETE FROM conversations WHERE id = ?", (conv_id,))
 
 
+def delete_conversations_for_base(user_id: int, base_id: str) -> int:
+    """Supprime toutes les conversations d'un utilisateur pour une base. Renvoie le nombre."""
+    with get_conn() as conn:
+        cur = conn.execute("DELETE FROM conversations WHERE user_id = ? AND base_id = ?",
+                           (user_id, base_id))
+        return cur.rowcount
+
+
 def list_messages(conversation_id: int) -> list[dict[str, Any]]:
     with get_conn() as conn:
         rows = conn.execute(

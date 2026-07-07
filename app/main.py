@@ -28,7 +28,7 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from starlette.concurrency import run_in_threadpool
 
-from core import appsettings, auth, bases, db, importer, ingest, rag, vectorstore
+from core import appsettings, auth, bases, db, importer, ingest, rag, retrieval, vectorstore
 from core.config import settings
 from core.security import (
     CSP_POLICY,
@@ -201,10 +201,22 @@ async def chat_stream(request: Request):
         user_overrides = {k: v for k, v in user_overrides.items() if k != "llm_model"}
     params = appsettings.build_params(user_overrides, overrides)
     db.add_message(conv_id, "user", question)
-    # Retrieval lourd (embeddings, rerank, reformulation) hors de la boucle asynchrone.
-    prep = await run_in_threadpool(rag.prepare, base_id, question, params)
 
+    # Le pipeline (lourd) s'exécute dans le générateur sync -> itéré en threadpool
+    # par Starlette : la boucle asynchrone n'est pas bloquée. Chaque étape est
+    # diffusée en direct (affichage type « recherche »), puis la génération.
     def event_stream():
+        out = {"results": [], "diagnostics": {}}
+        try:
+            for ev in retrieval.retrieve_iter(base_id, question, params):
+                if ev[0] == "step":
+                    yield _sse("step", {"label": ev[1]})
+                elif ev[0] == "result":
+                    out = ev[1]
+        except Exception as exc:
+            yield _sse("error", {"message": f"Erreur de recherche ({type(exc).__name__})."})
+
+        prep = rag.assemble(question, out, params)
         yield _sse("meta", {
             "conversation_id": conv_id, "found": prep["found"],
             "search_mode": prep["search_mode"], "sources": prep["sources"],
@@ -216,6 +228,7 @@ async def chat_stream(request: Request):
                 parts.append(rag.NOT_FOUND_MESSAGE)
                 yield _sse("token", {"t": rag.NOT_FOUND_MESSAGE})
             elif not prep["search_mode"]:
+                yield _sse("step", {"label": "Génération de la réponse…"})
                 for tok in rag.generate_answer(prep["prompt"], model=params.llm_model):
                     parts.append(tok)
                     yield _sse("token", {"t": tok})
@@ -434,6 +447,20 @@ async def conversation_delete(request: Request, conv_id: int,
         db.delete_conversation(conv_id)
     dest = f"/chat?base={base}" if base else "/chat"
     return RedirectResponse(dest, status_code=303)
+
+
+@app.post("/conversations/delete-all")
+async def conversations_delete_all(request: Request, base: str = Form(...),
+                                   csrf_token: str = Form(...)):
+    """Supprime toutes les conversations de l'utilisateur courant pour une base."""
+    user = auth.current_user(request)
+    if not user:
+        return RedirectResponse("/login", status_code=303)
+    if _check_csrf(request, csrf_token) and base:
+        n = db.delete_conversations_for_base(user["id"], base)
+        db.insert_audit("conversations_clear", user["id"], user["username"],
+                        client_ip(request), _ua(request), f"base={base} n={n}")
+    return RedirectResponse(f"/chat?base={base}", status_code=303)
 
 
 # --------------------------------------------------------------------------

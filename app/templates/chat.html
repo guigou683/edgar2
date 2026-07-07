@@ -33,6 +33,17 @@
 </div>
 {% endblock %}
 
+{% block sidebar_bottom %}
+{% if conversations %}
+<form class="clear-convs" method="post" action="/conversations/delete-all"
+      data-confirm="Supprimer TOUTES vos conversations de cette base ? Cette action est irréversible.">
+  <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+  <input type="hidden" name="base" value="{{ base_id }}">
+  <button class="btn-clear-convs" type="submit">Supprimer toutes les conversations</button>
+</form>
+{% endif %}
+{% endblock %}
+
 {% block content %}
 <div class="chat"
      data-base-id="{{ base_id or '' }}"

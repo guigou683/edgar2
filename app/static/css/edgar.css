@@ -62,6 +62,7 @@ a:hover { color: var(--or); }
 .account { border-top: 1px solid var(--border); padding-top: 12px; }
 .account-name { font-weight: 600; }
 .account-role { color: var(--text-muted); font-size: 12px; text-transform: capitalize; }
+.account-sep { height: 0; border-top: 1px solid var(--border); margin: 12px 0; }
 .btn-logout {
   margin-top: 8px; width: 100%; padding: 7px; background: transparent;
   color: var(--text-muted); border: 1px solid var(--border);
@@ -142,6 +143,17 @@ a.btn-new { display: block; text-align: center; text-decoration: none; }
 .md-content th, .md-content td { border: 1px solid var(--border); padding: 6px 10px; }
 .typing { color: var(--or); animation: blink 1s step-start infinite; }
 @keyframes blink { 50% { opacity: 0; } }
+
+/* --- Étapes de recherche (chrono par étape, façon « recherche ») --- */
+.steps { display: flex; flex-direction: column; gap: 6px; margin: 10px 0 0; max-width: 760px; }
+.step { display: flex; align-items: center; gap: 8px; font-size: 13px; color: var(--text-muted); }
+.step.done { color: var(--text); }
+.step-ic { width: 14px; display: inline-flex; justify-content: center; color: var(--or); }
+.step-label { flex: 1; }
+.step-time { color: var(--text-muted); font-variant-numeric: tabular-nums; }
+.spin { width: 11px; height: 11px; border: 2px solid var(--border); border-top-color: var(--marine-acc); border-radius: 50%; display: inline-block; animation: spin .7s linear infinite; }
+@keyframes spin { to { transform: rotate(360deg); } }
+.steps-recap { margin-top: 8px; font-size: 12px; color: var(--text-muted); max-width: 760px; }
 
 /* --- Bloc Sources --- */
 .sources { margin-top: 10px; width: 100%; max-width: 760px; }
@@ -274,6 +286,9 @@ a.btn-mini { text-decoration: none; display: inline-block; }
 .conv-del-btn { display: none; background: none; border: none; color: var(--text-muted); cursor: pointer; padding: 4px 8px; align-items: center; }
 .conv-item-wrap:hover .conv-del-btn { display: inline-flex; }
 .conv-del-btn:hover { color: #f3b6bd; }
+.clear-convs { margin: 0 0 12px; }
+.btn-clear-convs { width: 100%; padding: 7px; background: transparent; color: var(--text-muted); border: 1px solid var(--border); border-radius: var(--radius); cursor: pointer; font-size: 12px; }
+.btn-clear-convs:hover { color: #f3b6bd; border-color: #5a2630; }
 
 /* --- Info « i » + info-bulle --- */
 .info-i {

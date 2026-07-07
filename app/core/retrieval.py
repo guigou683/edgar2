@@ -56,25 +56,31 @@ def _rrf_fuse(result_lists: list[list[dict[str, Any]]], k: int = 60
     return fused
 
 
-def retrieve(base_id: str, question: str, params: SearchParams | None = None
-             ) -> dict[str, Any]:
-    """Exécute le pipeline et renvoie {results, diagnostics}."""
+def retrieve_iter(base_id: str, question: str, params: SearchParams | None = None):
+    """Pipeline **itératif** : émet chaque étape au fil de l'eau pour l'affichage
+    dynamique, puis le résultat final.
+
+    Produit des tuples :
+      ("step", libellé)                — début d'une étape (reformulation, recherche, rerank)
+      ("result", {results, diagnostics}) — résultat final du pipeline
+    """
     params = params or SearchParams()
     diag: dict[str, Any] = {"timings_ms": {}, "queries": [], "counts": {}}
 
     # 1. Reformulations (la question d'origine est toujours conservée).
-    t0 = time.perf_counter()
     queries = [question]
     if params.use_reprompt:
-        queries += llm.reformulate(question, n=params.n_reformulations,
-                                   model=params.llm_model)
+        yield ("step", "Reformulation de la question…")
+        t0 = time.perf_counter()
+        queries += llm.reformulate(question, n=params.n_reformulations, model=params.llm_model)
+        diag["timings_ms"]["reprompt"] = round((time.perf_counter() - t0) * 1000)
     diag["queries"] = queries
-    diag["timings_ms"]["reprompt"] = round((time.perf_counter() - t0) * 1000)
 
     use_dense = params.mode in (MODE_HYBRID, MODE_DENSE)
     use_sparse = params.mode in (MODE_HYBRID, MODE_BM25)
 
     # 2. Recherche hybride par requête.
+    yield ("step", "Recherche des documents les plus pertinents…")
     t0 = time.perf_counter()
     per_query_results: list[list[dict[str, Any]]] = []
     for q in queries:
@@ -82,23 +88,22 @@ def retrieve(base_id: str, question: str, params: SearchParams | None = None
         sidx = sval = None
         if use_sparse:
             sidx, sval = sparse.encode_query(q)
-        res = vectorstore.hybrid_search(
+        per_query_results.append(vectorstore.hybrid_search(
             base_id, dense_vec=dvec, sparse_indices=sidx, sparse_values=sval,
-            limit=params.k_candidates, use_dense=use_dense, use_sparse=use_sparse,
-        )
-        per_query_results.append(res)
+            limit=params.k_candidates, use_dense=use_dense, use_sparse=use_sparse))
     diag["timings_ms"]["search"] = round((time.perf_counter() - t0) * 1000)
 
     # 3. Fusion inter-requêtes (dédup par id).
     fused = _rrf_fuse(per_query_results)
     diag["counts"]["candidats_fusionnes"] = len(fused)
-
     if not fused:
         diag["reason"] = "aucun candidat"
-        return {"results": [], "diagnostics": diag}
+        yield ("result", {"results": [], "diagnostics": diag})
+        return
 
     # 4. Reranking (optionnel) puis 5. seuil de pertinence.
     if params.use_rerank:
+        yield ("step", "Re-ranking des documents trouvés…")
         t0 = time.perf_counter()
         reranked = rerank.rerank(question, fused[:max(params.k_candidates, params.top_k * 3)],
                                  top_k=len(fused))
@@ -108,7 +113,6 @@ def retrieve(base_id: str, question: str, params: SearchParams | None = None
         kept = [r for r in reranked if r["rerank_score"] >= params.threshold][:params.top_k]
         score_key = "rerank_score"
     else:
-        # Sans reranker : seuil appliqué au score RRF normalisé (max -> 1).
         top = fused[0]["rrf_score"] or 1.0
         for r in fused:
             r["norm_score"] = r["rrf_score"] / top
@@ -119,9 +123,16 @@ def retrieve(base_id: str, question: str, params: SearchParams | None = None
     if not kept:
         diag["reason"] = "sous le seuil de pertinence"
 
-    results = [{
-        "id": r["id"],
-        "score": round(float(r.get(score_key, 0.0)), 4),
-        "payload": r["payload"],
-    } for r in kept]
-    return {"results": results, "diagnostics": diag}
+    results = [{"id": r["id"], "score": round(float(r.get(score_key, 0.0)), 4),
+                "payload": r["payload"]} for r in kept]
+    yield ("result", {"results": results, "diagnostics": diag})
+
+
+def retrieve(base_id: str, question: str, params: SearchParams | None = None
+             ) -> dict[str, Any]:
+    """Exécute le pipeline et renvoie {results, diagnostics} (consomme retrieve_iter)."""
+    out = {"results": [], "diagnostics": {}}
+    for ev in retrieve_iter(base_id, question, params):
+        if ev[0] == "result":
+            out = ev[1]
+    return out

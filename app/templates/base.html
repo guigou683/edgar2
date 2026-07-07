@@ -29,10 +29,13 @@
 
       <div class="sidebar-spacer"></div>
 
+      {% block sidebar_bottom %}{% endblock %}
+
       {% if user %}
       <div class="account">
         <div class="account-name">{{ user.username }}</div>
         <div class="account-role">{{ user.role }}</div>
+        <div class="account-sep"></div>
         <a class="account-link" href="/documents">Documents</a>
         {% if user.role in ('contributor', 'admin') %}
         <a class="account-link" href="/contribute">Importer des documents</a>
@@ -41,6 +44,7 @@
         <a class="account-link" href="/admin">Administration</a>
         {% endif %}
         <a class="account-link" href="/about">À propos</a>
+        <div class="account-sep"></div>
         <form method="post" action="/logout">
           <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
           <button class="btn-logout" type="submit">Déconnexion</button>

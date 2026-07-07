@@ -69,14 +69,16 @@ def prepare(base_id: str, question: str, params: SearchParams | None = None) -> 
       - prompt       : prompt prêt pour le LLM (si génération) ou None.
     """
     params = params or SearchParams()
-    out = retrieve(base_id, question, params)
-    results = out["results"]
-    diagnostics = out["diagnostics"]
+    return assemble(question, retrieve(base_id, question, params), params)
 
+
+def assemble(question: str, out: dict[str, Any], params: SearchParams) -> dict[str, Any]:
+    """Transforme le résultat du retrieval en {found, sources, prompt, ...}."""
+    results = out.get("results", [])
+    diagnostics = out.get("diagnostics", {})
     if not results:
         return {"found": False, "sources": [], "diagnostics": diagnostics,
                 "search_mode": params.search_mode, "prompt": None}
-
     context, sources = _assemble_context(results)
     prompt = None if params.search_mode else _build_prompt(question, context)
     return {"found": True, "sources": sources, "diagnostics": diagnostics,

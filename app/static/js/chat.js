@@ -121,19 +121,47 @@ async function streamChat(chat, question) {
   const md = el("div", "md-content");
   const thinking = el("span", "thinking-text");
   abubble.appendChild(md); abubble.appendChild(thinking);
-  am.appendChild(abubble);
+  const stepsEl = el("div", "steps");
+  am.appendChild(abubble);   // encart de réponse
+  am.appendChild(stepsEl);   // étapes EN DESSOUS de l'encart
   messages.appendChild(am);
   messages.scrollTop = messages.scrollHeight;
 
-  // « Réflexion en cours.. » écrit caractère par caractère, puis ▍ clignotant.
-  const full = "Réflexion en cours..";
+  // « Réflexion en cours… » DANS l'encart de réponse (comme avant).
+  const full = "Réflexion en cours…";
   let ci = 0;
   const typer = setInterval(() => {
     if (ci < full.length) { ci++; thinking.textContent = full.slice(0, ci); }
     else { clearInterval(typer); thinking.innerHTML = full + '<span class="blink">▍</span>'; }
   }, 45);
-  let thinkingDone = false;
-  const clearThinking = () => { if (!thinkingDone) { thinkingDone = true; clearInterval(typer); thinking.remove(); } };
+  let thinkingCleared = false;
+  const clearThinking = () => { if (!thinkingCleared) { thinkingCleared = true; clearInterval(typer); thinking.remove(); } };
+
+  // Étapes sous l'encart : chaque ligne est créée UNE fois (le spinner n'est
+  // jamais recréé -> animation fluide) ; seul le chrono de l'étape active est mis à jour.
+  const steps = [];
+  const fmt = (ms) => (ms / 1000).toFixed(1) + " s";
+  function finalize(s) {
+    if (!s || s.done) return;
+    s.done = true; s.elapsed = Date.now() - s.start;
+    s.row.classList.add("done");
+    s.ic.textContent = "✓";
+    s.tm.textContent = fmt(s.elapsed);
+  }
+  function startStep(label) {
+    finalize(steps[steps.length - 1]);
+    const row = el("div", "step");
+    const ic = el("span", "step-ic"); ic.innerHTML = '<span class="spin"></span>';
+    const tm = el("span", "step-time", "0.0 s");
+    row.appendChild(ic); row.appendChild(el("span", "step-label", label)); row.appendChild(tm);
+    stepsEl.appendChild(row);
+    steps.push({ label: label, start: Date.now(), done: false, row: row, ic: ic, tm: tm });
+    messages.scrollTop = messages.scrollHeight;
+  }
+  const ticker = setInterval(() => {
+    const s = steps[steps.length - 1];
+    if (s && !s.done) s.tm.textContent = fmt(Date.now() - s.start);
+  }, 100);
 
   let meta = null, buffer = "";
   const body = {
@@ -167,7 +195,9 @@ async function streamChat(chat, question) {
         });
         let payload = {};
         try { payload = JSON.parse(data); } catch (e) { payload = {}; }
-        if (event === "meta") {
+        if (event === "step") {
+          startStep(payload.label || "…");
+        } else if (event === "meta") {
           meta = payload;
           if (payload.conversation_id) chat.dataset.convId = payload.conversation_id;
         } else if (event === "token") {
@@ -185,12 +215,22 @@ async function streamChat(chat, question) {
       }
     }
   } catch (e) {
+    clearThinking();
     md.textContent = "Erreur de communication avec le serveur.";
   }
 
+  // Fin de la recherche : on efface le détail des étapes, on ne garde que le temps total.
   clearThinking();
+  finalize(steps[steps.length - 1]);
+  clearInterval(ticker);
+  const total = steps.reduce((a, s) => a + (s.elapsed || 0), 0);
+  stepsEl.remove();
+
   if (meta && meta.search_mode) md.innerHTML = "<em>Mode recherche : extraits pertinents ci-dessous.</em>";
   else renderMarkdown(md, buffer);
+
+  if (steps.length) am.appendChild(el("div", "steps-recap", "Recherche : " + fmt(total)));
+
   if (meta) {
     const src = buildSources(meta.sources, chat.dataset.baseId);
     if (src) am.appendChild(src);
