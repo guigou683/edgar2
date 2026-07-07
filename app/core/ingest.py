@@ -104,7 +104,9 @@ def index_chunks(base_id: str, doc_hash: str, chunks: list[Chunk],
         })
     vectorstore.upsert_chunks(base_id, points)
     pages = len({c.page for c in chunks if c.page is not None})
-    return {"indexed": len(points), "pages": pages, "skipped": False, "reason": ""}
+    ocr_used = any(c.extra.get("ocr") for c in chunks)
+    return {"indexed": len(points), "pages": pages, "skipped": False,
+            "reason": "", "ocr": ocr_used}
 
 
 def ingest_file(base_id: str, file_path: str, file_name: Optional[str] = None,

@@ -34,8 +34,10 @@ def record_result(base_id: str, filename: str, rep: dict[str, Any],
     if rep.get("skipped"):
         return "skipped"
     if rep.get("indexed", 0) > 0:
+        # OCR déclenché automatiquement en mode fast (PDF scanné) -> tracé au registre.
+        eff_strategy = "fast (OCR auto)" if strategy == "fast" and rep.get("ocr") else strategy
         db.upsert_document(base_id, filename, "indexed", rep["indexed"],
-                           rep.get("pages", 0), strategy, size, None)
+                           rep.get("pages", 0), eff_strategy, size, None)
         return "indexed"
     db.upsert_document(base_id, filename, "failed", 0, 0, strategy, size,
                        (rep.get("reason") or "échec")[:400])
