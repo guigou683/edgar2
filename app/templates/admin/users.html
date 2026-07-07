@@ -69,6 +69,31 @@
                 </select>
                 <button class="btn-mini" type="submit">Rôle</button>
               </form>
+
+              <details class="user-edit">
+                <summary class="btn-mini">Modifier</summary>
+                <form method="post" action="/admin/users/edit" class="user-edit-form" autocomplete="off">
+                  <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+                  <input type="hidden" name="user_id" value="{{ u.id }}">
+                  <label>Nom d'utilisateur
+                    <input type="text" name="username" value="{{ u.username }}" required>
+                  </label>
+                  <label>Courriel
+                    <input type="email" name="email" value="{{ u.email or '' }}" placeholder="prenom.nom@example.fr">
+                  </label>
+                  <button class="btn-mini" type="submit">Enregistrer</button>
+                </form>
+              </details>
+
+              {% if u.status == 'suspended' %}
+              <form method="post" action="/admin/users/action"
+                    data-confirm="Supprimer définitivement le compte « {{ u.username }} » et toutes ses données (conversations, sessions) ? Cette action est irréversible.">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+                <input type="hidden" name="user_id" value="{{ u.id }}">
+                <input type="hidden" name="action" value="delete">
+                <button class="btn-mini danger" type="submit">Supprimer</button>
+              </form>
+              {% endif %}
             </div>
           </td>
         </tr>

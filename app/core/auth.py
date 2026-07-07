@@ -74,6 +74,16 @@ _RE_LOWER = re.compile(r"[a-z]")
 _RE_DIGIT = re.compile(r"[0-9]")
 _RE_SPECIAL = re.compile(r"[^A-Za-z0-9]")
 
+# Format « prenom.nom » (minuscules, éventuels traits d'union/apostrophes, un point séparateur).
+_RE_USERNAME = re.compile(r"^[a-zà-ÿ]+(?:[-'][a-zà-ÿ]+)*\.[a-zà-ÿ]+(?:[-'][a-zà-ÿ]+)*$")
+
+
+def validate_username_policy(username: str) -> tuple[bool, str]:
+    """Impose le format « prenom.nom » (minuscules) pour les demandes de compte."""
+    if not _RE_USERNAME.match(username or ""):
+        return False, "Le nom d'utilisateur doit être au format « prenom.nom » (en minuscules)."
+    return True, ""
+
 
 def validate_password_policy(password: str) -> tuple[bool, str]:
     """Applique la politique : longueur ≥ 12, majuscule, minuscule, chiffre, spécial.

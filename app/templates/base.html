@@ -36,6 +36,7 @@
         <div class="account-name">{{ user.username }}</div>
         <div class="account-role">{{ user.role }}</div>
         <div class="account-sep"></div>
+        <a class="account-link" href="/account">Mon compte</a>
         <a class="account-link" href="/documents">Documents</a>
         {% if user.role in ('contributor', 'admin') %}
         <a class="account-link" href="/contribute">Importer des documents</a>

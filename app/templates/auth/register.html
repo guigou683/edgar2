@@ -1,7 +1,7 @@
 {% extends "base.html" %}
 {% block content %}
 <div class="auth-wrap">
-  <form class="auth-card" method="post" action="/register" autocomplete="off">
+  <form class="auth-card" method="post" action="/register" autocomplete="off" data-validate-form>
     <h1 class="auth-title">Demander un accès</h1>
 
     {% if error %}<p class="alert alert-error">{{ error }}</p>{% endif %}
@@ -10,18 +10,20 @@
     {% if not confirm %}
     <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
     <label>Nom d'utilisateur
-      <input type="text" name="username" required autofocus>
+      <input type="text" name="username" required autofocus placeholder="prenom.nom"
+             data-rule="username">
     </label>
     <label>Courriel
-      <input type="email" name="email" required>
+      <input type="email" name="email" required placeholder="prenom.nom@example.fr"
+             data-rule="email">
     </label>
     <label>Mot de passe
-      <input type="password" name="password" required>
+      <input type="password" name="password" required data-rule="password" data-pw-input>
     </label>
+    {% include "partials/password_rules.html" %}
     <label>Confirmer le mot de passe
-      <input type="password" name="confirm" required>
+      <input type="password" name="confirm" required data-rule="confirm">
     </label>
-    <p class="auth-hint">Au moins 12 caractères, avec majuscule, minuscule, chiffre et caractère spécial.</p>
     <button class="btn-primary" type="submit">Envoyer la demande</button>
     {% endif %}
 

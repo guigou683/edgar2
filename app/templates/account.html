@@ -1,0 +1,36 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="admin">
+  <h1>Mon compte</h1>
+
+  {% if confirm %}<p class="alert alert-ok">{{ confirm }}</p>{% endif %}
+
+  <div class="admin-card account-card">
+    <h2>Profil</h2>
+    <dl class="account-info">
+      <dt>Nom d'utilisateur</dt><dd>{{ user.username }}</dd>
+      <dt>Courriel</dt><dd>{{ user.email or "—" }}</dd>
+      <dt>Rôle</dt><dd class="cap">{{ user.role }}</dd>
+    </dl>
+  </div>
+
+  <div class="admin-card account-card">
+    <h2>Changer mon mot de passe</h2>
+    {% if error %}<p class="alert alert-error">{{ error }}</p>{% endif %}
+    <form method="post" action="/change-password" autocomplete="off" data-validate-form>
+      <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+      <label>Mot de passe actuel
+        <input type="password" name="current_password" required data-rule="required">
+      </label>
+      <label>Nouveau mot de passe
+        <input type="password" name="new_password" required data-rule="password" data-pw-input>
+      </label>
+      {% include "partials/password_rules.html" %}
+      <label>Confirmer le nouveau mot de passe
+        <input type="password" name="confirm" required data-rule="confirm">
+      </label>
+      <button class="btn-primary" type="submit">Valider</button>
+    </form>
+  </div>
+</div>
+{% endblock %}

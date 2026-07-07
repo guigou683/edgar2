@@ -212,6 +212,20 @@ def set_role(user_id: int, role: str) -> None:
                      (role, now_iso(), user_id))
 
 
+def update_user_identity(user_id: int, username: str, email: Optional[str]) -> None:
+    """Met à jour le nom d'utilisateur et le courriel (correction admin)."""
+    with get_conn() as conn:
+        conn.execute("UPDATE users SET username = ?, email = ?, updated_at = ? WHERE id = ?",
+                     (username, email, now_iso(), user_id))
+
+
+def delete_user(user_id: int) -> None:
+    """Supprime définitivement un compte. Les sessions, réglages et conversations
+    (donc messages) suivent via ON DELETE CASCADE."""
+    with get_conn() as conn:
+        conn.execute("DELETE FROM users WHERE id = ?", (user_id,))
+
+
 def record_login_failure(user_id: int, failed_attempts: int, locked_until: Optional[str]) -> None:
     with get_conn() as conn:
         conn.execute(

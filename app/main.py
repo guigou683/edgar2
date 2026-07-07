@@ -330,6 +330,10 @@ async def register_submit(
         return _render_with_csrf(request, "auth/register.html",
                                  {"title": "Inscription",
                                   "error": "Vérifiez le nom d'utilisateur et la confirmation."})
+    ok_u, msg_u = auth.validate_username_policy(username)
+    if not ok_u:
+        return _render_with_csrf(request, "auth/register.html",
+                                 {"title": "Inscription", "error": msg_u})
     if "@" not in email or "." not in email.split("@")[-1]:
         return _render_with_csrf(request, "auth/register.html",
                                  {"title": "Inscription",
@@ -359,6 +363,18 @@ async def register_submit(
 # --------------------------------------------------------------------------
 # Changement de mot de passe (forcé au premier login admin)
 # --------------------------------------------------------------------------
+@app.get("/account")
+async def account_page(request: Request, changed: int = 0):
+    """Espace compte accessible à tout utilisateur connecté (profil + mot de passe)."""
+    user = auth.current_user(request)
+    if not user:
+        return RedirectResponse("/login", status_code=303)
+    return _render_with_csrf(request, "account.html", {
+        "title": "Mon compte", "user": user,
+        "confirm": "Mot de passe mis à jour." if changed else None,
+    })
+
+
 @app.get("/change-password")
 async def change_password_form(request: Request):
     user = auth.current_user(request)
@@ -396,10 +412,12 @@ async def change_password_submit(
     if new_password == current_password:
         return again("Le nouveau mot de passe doit différer de l'ancien.")
 
+    was_forced = bool(user["must_change_password"])
     db.update_password(user["id"], auth.hash_password(new_password), must_change=False)
     db.insert_audit("password_change", user["id"], user["username"],
                     client_ip(request), _ua(request), "")
-    return RedirectResponse("/", status_code=303)
+    # Changement forcé (1er login) -> accueil ; changement volontaire -> espace compte.
+    return RedirectResponse("/" if was_forced else "/account?changed=1", status_code=303)
 
 
 # --------------------------------------------------------------------------
@@ -830,10 +848,11 @@ async def admin_users_action(request: Request, user_id: int = Form(...),
     if not target:
         return RedirectResponse("/admin/users", status_code=303)
 
-    # Anti-verrouillage : un admin ne peut ni se suspendre ni se rétrograder lui-même.
-    if user_id == admin["id"] and action in ("suspend", "set_role"):
-        return users_page("Vous ne pouvez pas modifier votre propre rôle ni votre statut "
-                          "(sécurité anti-verrouillage).")
+    # Anti-verrouillage : un admin ne peut ni se suspendre, ni se rétrograder,
+    # ni se supprimer lui-même.
+    if user_id == admin["id"] and action in ("suspend", "set_role", "delete"):
+        return users_page("Vous ne pouvez pas modifier votre propre rôle, votre statut "
+                          "ni supprimer votre compte (sécurité anti-verrouillage).")
 
     if action == "activate":
         db.set_status(user_id, auth.STATUS_ACTIVE)
@@ -843,10 +862,49 @@ async def admin_users_action(request: Request, user_id: int = Form(...),
     elif action == "set_role" and role in auth.ROLES:
         db.set_role(user_id, role)
         db.revoke_user_sessions(user_id)              # rôle changé -> re-login (cible)
+    elif action == "delete":
+        # Suppression seulement après suspension (garde-fou : deux gestes distincts).
+        if target["status"] != auth.STATUS_SUSPENDED:
+            return users_page("Suspendez d'abord le compte, puis supprimez-le.")
+        db.delete_user(user_id)
     db.insert_audit(f"user_{action}", admin["id"], admin["username"],
                     client_ip(request), _ua(request),
                     f"cible={target['username']} role={role}")
     return RedirectResponse("/admin/users", status_code=303)
+
+
+@app.post("/admin/users/edit")
+async def admin_users_edit(request: Request, user_id: int = Form(...),
+                           username: str = Form(...), email: str = Form(""),
+                           csrf_token: str = Form(...)):
+    admin, resp = _guard(request, auth.ROLE_ADMIN)
+    if resp:
+        return resp
+
+    def users_page(error: str = "", ok: str = ""):
+        return _render_with_csrf(request, "admin/users.html", {
+            "user": admin, "title": "Comptes", "users": db.list_users(),
+            "roles": auth.ROLES, "error": error, "created": ok})
+
+    if not _check_csrf(request, csrf_token):
+        return users_page("Session expirée, réessayez.")
+    target = db.get_user_by_id(user_id)
+    if not target:
+        return RedirectResponse("/admin/users", status_code=303)
+    username = username.strip()
+    email = email.strip()
+    if not username:
+        return users_page("Le nom d'utilisateur est obligatoire.")
+    if email and ("@" not in email or "." not in email.split("@")[-1]):
+        return users_page("Courriel invalide.")
+    existing = db.get_user_by_username(username)
+    if existing and existing["id"] != user_id:
+        return users_page("Ce nom d'utilisateur est déjà pris.")
+
+    db.update_user_identity(user_id, username, email or None)
+    db.insert_audit("user_edit", admin["id"], admin["username"], client_ip(request),
+                    _ua(request), f"cible={target['username']}->{username} email={email or '—'}")
+    return users_page(ok=f"Compte « {username} » mis à jour.")
 
 
 @app.post("/admin/users/create")

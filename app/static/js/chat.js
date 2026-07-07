@@ -497,6 +497,51 @@ document.addEventListener("DOMContentLoaded", () => {
     });
   }
 
+  // --- Validation dynamique des formulaires (inscription / mot de passe) ---
+  document.querySelectorAll("[data-validate-form]").forEach((form) => {
+    const submit = form.querySelector('[type="submit"]');
+    const inputs = Array.from(form.querySelectorAll("[data-rule]"));
+    if (!inputs.length) return;
+    const pwInput = form.querySelector("[data-pw-input]");
+    const pwRulesEl = form.querySelector("[data-pw-rules]");
+    const reUser = /^[a-zà-ÿ]+([-'][a-zà-ÿ]+)*\.[a-zà-ÿ]+([-'][a-zà-ÿ]+)*$/;
+    const reEmail = /^[^@\s]+@[^@\s]+\.[^@\s]+$/;
+    const pwChecks = (v) => ({
+      len: v.length >= 12, upper: /[A-Z]/.test(v), lower: /[a-z]/.test(v),
+      digit: /[0-9]/.test(v), special: /[^A-Za-z0-9]/.test(v),
+    });
+    const fieldValid = (inp) => {
+      const v = inp.value || "";
+      switch (inp.getAttribute("data-rule")) {
+        case "username": return reUser.test(v.trim());
+        case "email": return reEmail.test(v.trim());
+        case "password": { const c = pwChecks(v); return c.len && c.upper && c.lower && c.digit && c.special; }
+        case "confirm": return v.length > 0 && !!pwInput && v === pwInput.value;
+        default: return v.trim().length > 0;  // required
+      }
+    };
+    const update = () => {
+      let allOk = true;
+      inputs.forEach((inp) => {
+        const ok = fieldValid(inp);
+        inp.classList.toggle("field-invalid", !ok);
+        if (!ok) allOk = false;
+      });
+      if (pwInput && pwRulesEl) {
+        const c = pwChecks(pwInput.value || "");
+        pwRulesEl.querySelectorAll("[data-pw]").forEach((li) => {
+          const ok = !!c[li.getAttribute("data-pw")];
+          li.classList.toggle("ok", ok);
+          const mark = li.querySelector(".pw-mark");
+          if (mark) mark.textContent = ok ? "✓" : "○";
+        });
+      }
+      if (submit) submit.disabled = !allOk;
+    };
+    inputs.forEach((inp) => { inp.addEventListener("input", update); inp.addEventListener("blur", update); });
+    update();
+  });
+
   // --- Préréglages Rapide / Précis ---
   const PRESETS = {
     fast: { mode: "hybrid", use_reprompt: false, n_reformulations: 1, use_rerank: true, top_k: 5, k_candidates: 10, threshold: 0.3 },
