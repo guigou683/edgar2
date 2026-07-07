@@ -128,6 +128,17 @@ CREATE TABLE IF NOT EXISTS documents (
     UNIQUE(base_id, filename)
 );
 CREATE INDEX IF NOT EXISTS idx_docs_base ON documents(base_id);
+
+CREATE TABLE IF NOT EXISTS document_summaries (
+    base_id    TEXT NOT NULL,
+    filename   TEXT NOT NULL,
+    summary    TEXT NOT NULL,
+    model      TEXT,
+    chunks     INTEGER NOT NULL DEFAULT 0,
+    created_at TEXT NOT NULL,
+    created_by TEXT,
+    PRIMARY KEY (base_id, filename)
+);
 """
 
 
@@ -408,6 +419,38 @@ def get_document(base_id: str, filename: str) -> Optional[dict[str, Any]]:
 def delete_document_row(base_id: str, filename: str) -> None:
     with get_conn() as conn:
         conn.execute("DELETE FROM documents WHERE base_id = ? AND filename = ?",
+                     (base_id, filename))
+        # Le résumé mis en cache devient caduc si le document disparaît.
+        conn.execute("DELETE FROM document_summaries WHERE base_id = ? AND filename = ?",
+                     (base_id, filename))
+
+
+# --------------------------------------------------------------------------
+# Résumés de documents (cache LLM : généré à la demande, réutilisé ensuite)
+# --------------------------------------------------------------------------
+def get_document_summary(base_id: str, filename: str) -> Optional[dict[str, Any]]:
+    with get_conn() as conn:
+        row = conn.execute(
+            "SELECT * FROM document_summaries WHERE base_id = ? AND filename = ?",
+            (base_id, filename)).fetchone()
+        return dict(row) if row else None
+
+
+def save_document_summary(base_id: str, filename: str, summary: str,
+                          model: Optional[str], chunks: int, created_by: Optional[str]) -> None:
+    with get_conn() as conn:
+        conn.execute(
+            "INSERT INTO document_summaries (base_id, filename, summary, model, chunks, "
+            "created_at, created_by) VALUES (?, ?, ?, ?, ?, ?, ?) "
+            "ON CONFLICT(base_id, filename) DO UPDATE SET summary=excluded.summary, "
+            "model=excluded.model, chunks=excluded.chunks, created_at=excluded.created_at, "
+            "created_by=excluded.created_by",
+            (base_id, filename, summary, model, chunks, now_iso(), created_by))
+
+
+def delete_document_summary(base_id: str, filename: str) -> None:
+    with get_conn() as conn:
+        conn.execute("DELETE FROM document_summaries WHERE base_id = ? AND filename = ?",
                      (base_id, filename))
 
 

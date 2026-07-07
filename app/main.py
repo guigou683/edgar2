@@ -592,13 +592,31 @@ def _documents_overview(docs: list[dict]) -> dict:
 
 
 @app.get("/documents/summary")
-async def document_summary(request: Request, base: str, file: str):
-    """Flux SSE : synthèse d'un document (LLM) à partir de tous ses extraits indexés."""
-    if not auth.current_user(request):
+async def document_summary(request: Request, base: str, file: str, force: int = 0):
+    """Flux SSE : synthèse d'un document (LLM) à partir de tous ses extraits indexés.
+
+    Le résumé est mis en cache (table document_summaries) : au premier appel il est
+    généré puis enregistré ; les appels suivants le renvoient instantanément. Le
+    bouton « Régénérer » passe force=1 pour forcer une nouvelle génération."""
+    user = auth.current_user(request)
+    if not user:
         return JSONResponse({"error": "authentification requise"}, status_code=401)
     if not bases.get_base(base):
         return JSONResponse({"error": "base inconnue"}, status_code=404)
     name = file.strip().replace("\\", "/")
+
+    # Cache : renvoi immédiat si un résumé existe et qu'on ne force pas la régénération.
+    if not force:
+        cached = db.get_document_summary(base, name)
+        if cached:
+            def gen_cached():
+                yield _sse("meta", {"chunks": cached.get("chunks", 0), "truncated": False,
+                                    "cached": True, "created_at": cached.get("created_at")})
+                yield _sse("token", {"t": cached["summary"]})
+                yield _sse("done", {"cached": True})
+            return StreamingResponse(gen_cached(), media_type="text/event-stream",
+                                     headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"})
+
     payloads = await run_in_threadpool(vectorstore.chunks_for_file, base, name)
 
     def gen():
@@ -607,13 +625,21 @@ async def document_summary(request: Request, base: str, file: str):
             yield _sse("done", {})
             return
         _, truncated = rag.build_summary_prompt(name, payloads)
-        yield _sse("meta", {"chunks": len(payloads), "truncated": truncated})
+        yield _sse("meta", {"chunks": len(payloads), "truncated": truncated, "cached": False})
+        parts = []
         try:
             for tok in rag.summarize_stream(name, payloads):
+                parts.append(tok)
                 yield _sse("token", {"t": tok})
         except Exception as exc:
             yield _sse("error", {"message": f"Erreur de génération ({type(exc).__name__})."})
-        yield _sse("done", {})
+            yield _sse("done", {})
+            return
+        summary = "".join(parts).strip()
+        if summary:  # enregistrement pour réutilisation (évite de recalculer)
+            db.save_document_summary(base, name, summary, settings.LLM_MODEL,
+                                     len(payloads), user["username"])
+        yield _sse("done", {"saved": bool(summary)})
 
     return StreamingResponse(gen(), media_type="text/event-stream",
                              headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"})
@@ -657,6 +683,8 @@ async def documents_reanalyze(request: Request, base_id: str = Form(...),
             path = None
         if path and path.is_file():
             strat = _resolve_strategy(base, strategy)
+            # Le contenu va changer : le résumé mis en cache devient caduc.
+            db.delete_document_summary(base_id, filename.strip().replace("\\", "/"))
             job_id = importer.start(base_id, [str(path)], strat, reindex=True)
             db.insert_audit("document_reanalyze", user["id"], user["username"],
                             client_ip(request), _ua(request),

@@ -428,55 +428,72 @@ document.addEventListener("DOMContentLoaded", () => {
   if (treeCollapse) treeCollapse.addEventListener("click", () => setAllDirs(false));
   if (treeExpand) treeExpand.addEventListener("click", () => setAllDirs(true));
 
-  // --- Résumé LLM d'un document (modale + streaming SSE) ---
+  // --- Résumé LLM d'un document (modale + streaming SSE, avec cache) ---
   const summaryModal = document.querySelector("[data-summary-modal]");
   if (summaryModal) {
     const title = summaryModal.querySelector("[data-summary-title]");
     const meta = summaryModal.querySelector("[data-summary-meta]");
     const body = summaryModal.querySelector("[data-summary-body]");
-    let es = null;
+    const regenBtn = summaryModal.querySelector("[data-summary-regen]");
+    let es = null, current = null;
     const close = () => {
       if (es) { es.close(); es = null; }
       summaryModal.hidden = true;
     };
+    const fmtDate = (iso) => {
+      if (!iso) return "";
+      const d = new Date(iso);
+      return isNaN(d) ? "" : d.toLocaleString("fr-FR");
+    };
+    const run = (file, base, force) => {
+      current = { file: file, base: base };
+      if (es) es.close();
+      title.textContent = "Résumé — " + file.split("/").pop();
+      regenBtn.hidden = true;
+      regenBtn.disabled = true;
+      meta.innerHTML = '<span class="spin"></span> '
+        + (force ? "Régénération…" : "Recherche d'un résumé enregistré…");
+      body.innerHTML = '<div class="summary-loading"><span class="spin"></span>'
+                     + ' Génération de la synthèse en cours…</div>';
+      summaryModal.hidden = false;
+      let buffer = "", metaText = "", cached = false;
+      const url = "/documents/summary?base=" + encodeURIComponent(base)
+                + "&file=" + encodeURIComponent(file) + (force ? "&force=1" : "");
+      es = new EventSource(url);
+      es.addEventListener("meta", (e) => {
+        const d = JSON.parse(e.data);
+        cached = !!d.cached;
+        metaText = cached
+          ? "Résumé enregistré" + (d.created_at ? " le " + fmtDate(d.created_at) : "")
+            + " · " + d.chunks + " extrait(s)."
+          : "Synthèse de " + d.chunks + " extrait(s)"
+            + (d.truncated ? " (document volumineux : début synthétisé)." : ".");
+        meta.innerHTML = cached ? metaText : ('<span class="spin"></span> ' + metaText);
+      });
+      es.addEventListener("token", (e) => {
+        if (!buffer) { body.textContent = ""; meta.textContent = metaText; }  // 1er jeton : retire le spinner
+        buffer += JSON.parse(e.data).t;
+        renderMarkdown(body, buffer);
+      });
+      es.addEventListener("error", (e) => {
+        let msg = "Erreur lors de la génération du résumé.";
+        try { msg = JSON.parse(e.data).message; } catch (_) {}
+        meta.textContent = msg;
+        if (!buffer) body.textContent = "";
+        regenBtn.hidden = false; regenBtn.disabled = false;
+      });
+      es.addEventListener("done", () => {
+        if (!buffer) body.textContent = "Aucun contenu à synthétiser.";
+        regenBtn.hidden = false; regenBtn.disabled = false;
+        if (es) { es.close(); es = null; }
+      });
+    };
     summaryModal.querySelector("[data-summary-close]").addEventListener("click", close);
     summaryModal.addEventListener("click", (e) => { if (e.target === summaryModal) close(); });
+    regenBtn.addEventListener("click", () => { if (current) run(current.file, current.base, true); });
     document.querySelectorAll("[data-summary]").forEach((btn) => {
-      btn.addEventListener("click", () => {
-        const file = btn.getAttribute("data-file");
-        const base = btn.getAttribute("data-base");
-        if (es) es.close();
-        title.textContent = "Résumé — " + file.split("/").pop();
-        meta.innerHTML = '<span class="spin"></span> Récupération des extraits…';
-        body.innerHTML = '<div class="summary-loading"><span class="spin"></span>'
-                       + ' Génération de la synthèse en cours…</div>';
-        summaryModal.hidden = false;
-        let buffer = "", metaText = "";
-        const url = "/documents/summary?base=" + encodeURIComponent(base)
-                  + "&file=" + encodeURIComponent(file);
-        es = new EventSource(url);
-        es.addEventListener("meta", (e) => {
-          const d = JSON.parse(e.data);
-          metaText = "Synthèse de " + d.chunks + " extrait(s)"
-            + (d.truncated ? " (document volumineux : début synthétisé)." : ".");
-          meta.innerHTML = '<span class="spin"></span> ' + metaText;
-        });
-        es.addEventListener("token", (e) => {
-          if (!buffer) { body.textContent = ""; meta.textContent = metaText; }  // 1er jeton : on retire le spinner
-          buffer += JSON.parse(e.data).t;
-          renderMarkdown(body, buffer);
-        });
-        es.addEventListener("error", (e) => {
-          let msg = "Erreur lors de la génération du résumé.";
-          try { msg = JSON.parse(e.data).message; } catch (_) {}
-          meta.textContent = msg;
-          if (!buffer) body.textContent = "";
-        });
-        es.addEventListener("done", () => {
-          if (!buffer) body.textContent = "Aucun contenu à synthétiser.";
-          if (es) { es.close(); es = null; }
-        });
-      });
+      btn.addEventListener("click", () => run(btn.getAttribute("data-file"),
+                                              btn.getAttribute("data-base"), false));
     });
   }
 
