@@ -112,6 +112,30 @@ def clear_user_overrides(user_id: int) -> None:
     db.delete_user_settings(user_id)
 
 
+# --- Parallélisme d'indexation (réglage admin global) ---
+_INDEX_KEY = "index_workers"
+INDEX_WORKERS_DEFAULT = 2
+INDEX_WORKERS_MAX = 16
+
+
+def get_index_workers() -> int:
+    """Nombre de workers pour l'OCR (threads) et l'extraction de mots-clés
+    (processus) lors de l'indexation. 1 = séquentiel."""
+    try:
+        return max(1, min(INDEX_WORKERS_MAX, int(db.get_setting(_INDEX_KEY))))
+    except (TypeError, ValueError):
+        return INDEX_WORKERS_DEFAULT
+
+
+def set_index_workers(n: Any) -> int:
+    try:
+        n = max(1, min(INDEX_WORKERS_MAX, int(n)))
+    except (TypeError, ValueError):
+        n = INDEX_WORKERS_DEFAULT
+    db.set_setting(_INDEX_KEY, str(n))
+    return n
+
+
 def effective_dict(user_id: int) -> dict[str, Any]:
     """Valeurs effectives pour initialiser le panneau (globaux < surcharges utilisateur)."""
     p = build_params(load_user_overrides(user_id))

@@ -8,30 +8,48 @@ la recherche.
 from __future__ import annotations
 
 import json
+import time
 from typing import Iterator
 
 import httpx
 
 from core.config import settings
 
-EMBED_BATCH = 32  # lots d'embeddings (compromis débit / mémoire)
+EMBED_BATCH = 32       # lots d'embeddings (compromis débit / mémoire)
+EMBED_TIMEOUT = 300.0  # marge pour un rechargement de modèle (bascule VRAM)
+EMBED_RETRIES = 2      # reprises sur timeout/erreur réseau transitoire
 
 
-def embed_texts(texts: list[str], model: str | None = None) -> list[list[float]]:
+def embed_texts(texts: list[str], model: str | None = None, progress=None) -> list[list[float]]:
     """Calcule les embeddings denses d'une liste de textes, par lots de 32.
 
     Utilise l'endpoint /api/embed d'Ollama (entrée par lot). Renvoie une liste
-    de vecteurs (1024 dim pour bge-m3), dans l'ordre des textes fournis.
-    """
+    de vecteurs (1024 dim pour bge-m3), dans l'ordre des textes fournis. Un lot
+    qui échoue sur un timeout/erreur réseau transitoire est réessayé (le premier
+    embedding après une bascule de modèle peut être lent). `progress(done, total)`
+    est appelé après chaque lot (suivi intra-fichier)."""
     model = model or settings.EMBED_MODEL
+    total = len(texts)
     out: list[list[float]] = []
-    with httpx.Client(timeout=120.0) as client:
-        for i in range(0, len(texts), EMBED_BATCH):
+    with httpx.Client(timeout=EMBED_TIMEOUT) as client:
+        for i in range(0, total, EMBED_BATCH):
             batch = texts[i:i + EMBED_BATCH]
-            r = client.post(f"{settings.OLLAMA_URL}/api/embed",
-                            json={"model": model, "input": batch})
-            r.raise_for_status()
-            out.extend(r.json()["embeddings"])
+            last_exc: Exception | None = None
+            for attempt in range(EMBED_RETRIES + 1):
+                try:
+                    r = client.post(f"{settings.OLLAMA_URL}/api/embed",
+                                    json={"model": model, "input": batch})
+                    r.raise_for_status()
+                    out.extend(r.json()["embeddings"])
+                    last_exc = None
+                    break
+                except (httpx.TimeoutException, httpx.TransportError) as exc:
+                    last_exc = exc
+                    time.sleep(2.0 * (attempt + 1))  # petit backoff avant reprise
+            if last_exc is not None:
+                raise last_exc
+            if progress:
+                progress(min(i + EMBED_BATCH, total), total)
     return out
 
 

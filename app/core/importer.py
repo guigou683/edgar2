@@ -7,13 +7,15 @@ pour un affichage dynamique côté navigateur.
 """
 from __future__ import annotations
 
+import multiprocessing
 import threading
 import time
 import uuid
+from concurrent.futures import ProcessPoolExecutor, ThreadPoolExecutor
 from pathlib import Path
 from typing import Any, Optional
 
-from core import db, ingest
+from core import appsettings, db, ingest, vectorstore
 from core.config import settings
 
 _jobs: dict[str, dict[str, Any]] = {}
@@ -57,40 +59,126 @@ def record_result(base_id: str, filename: str, rep: dict[str, Any],
     return "failed"
 
 
+def request_stop(job_id: str) -> bool:
+    """Demande l'arrêt souple d'un job : il s'arrête après le fichier en cours.
+    Renvoie True si la demande a été prise en compte (job en cours)."""
+    with _lock:
+        j = _jobs.get(job_id)
+        if not j or j.get("status") != "running":
+            return False
+        j["stop"] = True
+        return True
+
+
+def _record(job_id: str, base_id: str, doc_id: str, rep: dict, strategy: str, size: int) -> None:
+    issue = record_result(base_id, doc_id, rep, strategy, size)
+    with _lock:
+        j = _jobs[job_id]
+        j["done"] += 1
+        if issue == "skipped":
+            j["skipped"] += 1
+        elif issue == "indexed":
+            j["succeeded"] += 1
+            j["bytes"] += size  # taille cumulée des documents effectivement ajoutés
+        else:
+            j["failed"] += 1
+            j["failures"].append({"file": doc_id, "reason": rep.get("reason", "")})
+
+
 def _worker(job_id: str, base_id: str, paths: list[Path], strategy: str,
             reindex: bool) -> None:
-    for path in paths:
-        doc_id = rel_doc_id(base_id, path)  # « sous-dossier/fichier.pdf » (préserve l'arbo)
-        with _lock:
-            _jobs[job_id]["current"] = doc_id
+    """Pipeline à deux étages : pendant l'embedding GPU du fichier courant, la
+    préparation CPU (parsing/OCR/mots-clés/BM25) du fichier suivant est préchargée
+    dans un thread → recouvrement CPU↔GPU. `index_workers` (admin) fixe le nombre
+    de cœurs pour l'OCR des pages ET l'extraction des mots-clés (pool de processus).
+    La progression intra-fichier (étape + compteur) est remontée via `sub`.
+    Arrêt souple : stoppe après le fichier en cours.
+    """
+    workers = appsettings.get_index_workers()
+
+    # Pool de processus pour paralléliser YAKE (pur Python, borné par le GIL en threads).
+    # spawn : les workers n'importent que core.keywords (léger), pas le serveur.
+    yake_pool = None
+    if workers > 1:
+        try:
+            yake_pool = ProcessPoolExecutor(
+                max_workers=workers, mp_context=multiprocessing.get_context("spawn"))
+        except Exception:
+            yake_pool = None
+
+    _last = [0.0]
+
+    def make_report(doc_id: str):
+        def report(stage: str, done: int, total: int) -> None:
+            now = time.time()
+            final = bool(total) and done >= total
+            if now - _last[0] < 0.25 and not final:   # throttle ~4 màj/s
+                return
+            _last[0] = now
+            with _lock:
+                j = _jobs.get(job_id)
+                if j:
+                    j["sub"] = {"file": doc_id, "stage": stage, "done": done, "total": total}
+        return report
+
+    def prep_of(path: Path) -> tuple[str, int, dict]:
+        doc_id = rel_doc_id(base_id, path)
         try:
             size = path.stat().st_size
         except OSError:
             size = 0
         try:
-            if reindex:
-                rep = ingest.reindex_file(base_id, str(path), file_name=doc_id, strategy=strategy)
-            else:
-                rep = ingest.ingest_file(base_id, str(path), file_name=doc_id, strategy=strategy)
-        except Exception as exc:  # capture la raison précise de l'échec
-            rep = {"indexed": 0, "skipped": False,
-                   "reason": f"{type(exc).__name__}: {exc}"[:400]}
-        issue = record_result(base_id, doc_id, rep, strategy, size)
+            pf = ingest.prepare_file(base_id, str(path), file_name=doc_id, strategy=strategy,
+                                     skip_if_indexed=not reindex, yake_pool=yake_pool,
+                                     ocr_workers=workers, progress=make_report(doc_id))
+        except Exception as exc:
+            pf = {"status": "error", "reason": f"{type(exc).__name__}: {exc}"[:400]}
+        return doc_id, size, pf
+
+    prefetch = ThreadPoolExecutor(max_workers=1)
+    stopped = False
+    try:
+        n = len(paths)
+        future = prefetch.submit(prep_of, paths[0]) if n else None
+        for i in range(n):
+            with _lock:                       # arrêt souple : avant de démarrer un fichier
+                if _jobs[job_id].get("stop"):
+                    stopped = True
+                    break
+            doc_id, size, pf = future.result()  # prep CPU (recouverte par l'embed précédent)
+            with _lock:
+                _jobs[job_id]["current"] = doc_id
+            # Précharge la prep CPU du fichier suivant pendant l'embed GPU du courant.
+            future = prefetch.submit(prep_of, paths[i + 1]) if i + 1 < n else None
+
+            status = pf.get("status")
+            if status == "skipped":
+                rep = {"indexed": 0, "skipped": True, "reason": pf.get("reason", "")}
+            elif status in ("empty", "error"):
+                if reindex:                    # ré-analyse : purge quand même les anciens points
+                    try:
+                        vectorstore.delete_by_file(base_id, doc_id)
+                    except Exception:
+                        pass
+                rep = {"indexed": 0, "skipped": False, "reason": pf.get("reason", "échec")}
+            else:                              # ok -> phase GPU (embeddings + upsert)
+                try:
+                    rep = ingest.embed_and_upsert(
+                        base_id, pf["doc_hash"], pf["chunks"], pf["prep"],
+                        delete_file=doc_id if reindex else None, progress=make_report(doc_id))
+                except Exception as exc:
+                    rep = {"indexed": 0, "skipped": False,
+                           "reason": f"{type(exc).__name__}: {exc}"[:400]}
+            _record(job_id, base_id, doc_id, rep, strategy, size)
+    finally:
+        prefetch.shutdown(wait=False)
+        if yake_pool is not None:
+            yake_pool.shutdown(wait=False, cancel_futures=True)
         with _lock:
-            j = _jobs[job_id]
-            j["done"] += 1
-            if issue == "skipped":
-                j["skipped"] += 1
-            elif issue == "indexed":
-                j["succeeded"] += 1
-                j["bytes"] += size  # taille cumulée des documents effectivement ajoutés
-            else:
-                j["failed"] += 1
-                j["failures"].append({"file": doc_id, "reason": rep.get("reason", "")})
-    with _lock:
-        _jobs[job_id]["current"] = ""
-        _jobs[job_id]["status"] = "done"
-        _jobs[job_id]["finished"] = time.time()
+            _jobs[job_id]["current"] = ""
+            _jobs[job_id]["sub"] = None
+            _jobs[job_id]["status"] = "stopped" if stopped else "done"
+            _jobs[job_id]["finished"] = time.time()
 
 
 def start(base_id: str, paths: list[str], strategy: str, reindex: bool = False) -> str:
@@ -101,7 +189,7 @@ def start(base_id: str, paths: list[str], strategy: str, reindex: bool = False) 
         _jobs[job_id] = {
             "id": job_id, "base_id": base_id, "total": len(files), "done": 0,
             "succeeded": 0, "skipped": 0, "failed": 0, "current": "", "bytes": 0,
-            "failures": [], "status": "running", "started": time.time(),
+            "failures": [], "status": "running", "started": time.time(), "stop": False, "sub": None,
         }
     threading.Thread(target=_worker, args=(job_id, base_id, files, strategy, reindex),
                      daemon=True).start()

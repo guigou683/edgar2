@@ -15,14 +15,17 @@ from pathlib import Path
 IMAGE_EXTS = {".png", ".jpg", ".jpeg", ".tiff", ".tif", ".bmp", ".gif", ".webp"}
 
 
-def parse_file(path: str, file_name: str, strategy: str = "fast") -> list:
-    """Analyse un fichier en chunks. `strategy` ∈ {fast, ocr_only}."""
+def parse_file(path: str, file_name: str, strategy: str = "fast",
+               ocr_workers: int = 1, progress=None) -> list:
+    """Analyse un fichier en chunks. `strategy` ∈ {fast, ocr_only}.
+    `ocr_workers` parallélise l'OCR des pages PDF sur plusieurs cœurs.
+    `progress(stage, done, total)` remonte l'avancement OCR (PDF)."""
     ext = Path(file_name).suffix.lower()
     if ext in IMAGE_EXTS:
         from core.parsers import images
         return images.ocr_image(path, file_name)
     if ext == ".pdf":
         from core.parsers import pdf
-        return pdf.parse_pdf(path, file_name, strategy)
+        return pdf.parse_pdf(path, file_name, strategy, ocr_workers=ocr_workers, progress=progress)
     from core.parsers import document
     return document.parse_document(path, file_name, strategy)

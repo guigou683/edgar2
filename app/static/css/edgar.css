@@ -360,6 +360,7 @@ a.btn-mini { text-decoration: none; display: inline-block; }
 .job-counts { margin-top: 10px; font-size: 13px; color: var(--text-muted); }
 .job-counts .ok { color: #a7e0bd; } .job-counts .ko { color: #f3b6bd; }
 .job-current { margin-top: 6px; font-size: 12px; color: var(--text-muted); }
+.job-head-right { display: flex; align-items: center; gap: 10px; }
 .job-stats { margin-top: 10px; padding-top: 10px; border-top: 1px solid var(--border); font-size: 13px; color: var(--text-muted); }
 .job-stats b { color: var(--text); }
 .job-failures { margin-top: 10px; font-size: 12px; color: var(--text-muted); }

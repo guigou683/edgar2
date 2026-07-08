@@ -1,7 +1,10 @@
-<div class="job-panel" data-job-panel hidden>
+<div class="job-panel" data-job-panel data-csrf="{{ csrf_token }}" hidden>
   <div class="job-head">
     <span class="job-title">Import en cours…</span>
-    <span class="job-eta" data-job-eta></span>
+    <div class="job-head-right">
+      <button type="button" class="btn-mini danger" data-job-stop hidden>Arrêter l'import</button>
+      <span class="job-eta" data-job-eta></span>
+    </div>
   </div>
   <div class="job-bar"><div class="job-bar-fill" data-job-fill></div></div>
   <div class="job-counts">

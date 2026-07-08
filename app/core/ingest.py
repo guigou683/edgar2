@@ -60,26 +60,52 @@ def is_indexed(base_id: str, doc_hash: str) -> bool:
     return len(hits) > 0
 
 
-def index_chunks(base_id: str, doc_hash: str, chunks: list[Chunk],
-                 top_keywords: int = 8, skip_if_indexed: bool = True) -> dict[str, Any]:
-    """Indexe une liste de chunks d'un même document. Renvoie un petit rapport."""
-    if skip_if_indexed and is_indexed(base_id, doc_hash):
-        return {"indexed": 0, "skipped": True, "reason": "document déjà indexé"}
+def _keyword_lists(chunks: list[Chunk], top_keywords: int, yake_pool=None,
+                   progress=None) -> list[list[str]]:
+    """Mots-clés YAKE de chaque chunk. `yake_pool` (ProcessPool) parallélise sur
+    plusieurs cœurs si fourni ; repli séquentiel en cas d'échec du pool.
+    `progress(done, total)` est appelé au fil des chunks (suivi intra-fichier)."""
+    texts = [c.text for c in chunks]
+    n = len(texts)
+    if yake_pool is not None and n > 1:
+        try:
+            out: list[list[str]] = []
+            for i, kws in enumerate(
+                    yake_pool.map(kw.extract_keywords, texts, [top_keywords] * n), 1):
+                out.append(kws)
+                if progress:
+                    progress(i, n)
+            return out
+        except Exception:
+            pass  # pool indisponible -> repli séquentiel
+    out = []
+    for i, t in enumerate(texts, 1):
+        out.append(kw.extract_keywords(t, top_keywords))
+        if progress:
+            progress(i, n)
+    return out
 
-    if not chunks:
-        return {"indexed": 0, "skipped": False, "reason": "aucun chunk"}
 
-    # 1-2. Mots-clés + texte enrichi (vectorisé ET indexé BM25).
-    keyword_lists = [kw.extract_keywords(c.text, top_keywords) for c in chunks]
+def prepare_document(base_id: str, doc_hash: str, chunks: list[Chunk],
+                     top_keywords: int = 8, yake_pool=None, progress=None) -> dict[str, Any]:
+    """Phase CPU (sans GPU) : mots-clés + texte enrichi + vecteurs creux BM25."""
+    kw_progress = (lambda d, t: progress("keywords", d, t)) if progress else None
+    keyword_lists = _keyword_lists(chunks, top_keywords, yake_pool, kw_progress)
     enriched = [kw.augment_text(c.text, kws) for c, kws in zip(chunks, keyword_lists)]
-
-    # 3. Embeddings denses (par lots) sur le texte enrichi.
-    dense_vecs = llm.embed_texts(enriched)
-
-    # 4. Vecteurs creux BM25 sur le même texte enrichi.
     sparse_vecs = sparse.encode_documents(enriched)
+    return {"keyword_lists": keyword_lists, "enriched": enriched, "sparse_vecs": sparse_vecs}
 
-    # 5. Construction des points et upsert.
+
+def embed_and_upsert(base_id: str, doc_hash: str, chunks: list[Chunk],
+                     prep: dict[str, Any], delete_file: Optional[str] = None,
+                     progress=None) -> dict[str, Any]:
+    """Phase GPU : embeddings denses (Ollama) + construction des points + upsert Qdrant.
+
+    `delete_file` (ré-analyse) purge les anciens points juste avant l'upsert."""
+    keyword_lists, enriched, sparse_vecs = (
+        prep["keyword_lists"], prep["enriched"], prep["sparse_vecs"])
+    emb_progress = (lambda d, t: progress("index", d, t)) if progress else None
+    dense_vecs = llm.embed_texts(enriched, progress=emb_progress)  # seul appel GPU
     points = []
     for i, (c, kws, dvec, (sidx, sval)) in enumerate(
             zip(chunks, keyword_lists, dense_vecs, sparse_vecs)):
@@ -102,11 +128,48 @@ def index_chunks(base_id: str, doc_hash: str, chunks: list[Chunk],
                 **c.extra,
             },
         })
+    if delete_file:
+        vectorstore.delete_by_file(base_id, delete_file)
     vectorstore.upsert_chunks(base_id, points)
     pages = len({c.page for c in chunks if c.page is not None})
     ocr_used = any(c.extra.get("ocr") for c in chunks)
     return {"indexed": len(points), "pages": pages, "skipped": False,
             "reason": "", "ocr": ocr_used}
+
+
+def index_chunks(base_id: str, doc_hash: str, chunks: list[Chunk],
+                 top_keywords: int = 8, skip_if_indexed: bool = True) -> dict[str, Any]:
+    """Indexe une liste de chunks d'un même document (prepare CPU puis embed GPU)."""
+    if skip_if_indexed and is_indexed(base_id, doc_hash):
+        return {"indexed": 0, "skipped": True, "reason": "document déjà indexé"}
+    if not chunks:
+        return {"indexed": 0, "skipped": False, "reason": "aucun chunk"}
+    prep = prepare_document(base_id, doc_hash, chunks, top_keywords)
+    return embed_and_upsert(base_id, doc_hash, chunks, prep)
+
+
+def prepare_file(base_id: str, file_path: str, file_name: Optional[str] = None,
+                 strategy: str = "fast", top_keywords: int = 8, skip_if_indexed: bool = True,
+                 yake_pool=None, ocr_workers: int = 1, progress=None) -> dict[str, Any]:
+    """Phase CPU complète d'un fichier : lecture -> hash -> dedup -> parsing (OCR
+    parallèle) -> mots-clés -> BM25. Renvoie un dict `status` (ok/skipped/empty)
+    prêt pour la phase GPU (embed_and_upsert). `progress(stage, done, total)`
+    remonte l'avancement intra-fichier (analyse / ocr / keywords)."""
+    p = Path(file_path)
+    file_name = file_name or p.name
+    doc_hash = file_hash(p.read_bytes())
+    if skip_if_indexed and is_indexed(base_id, doc_hash):
+        return {"status": "skipped", "reason": "document déjà indexé", "doc_hash": doc_hash}
+    if progress:
+        progress("analyse", 0, 0)
+    from core.parsers import parse_file
+    chunks = parse_file(file_path, file_name, strategy, ocr_workers=ocr_workers, progress=progress)
+    if not chunks:
+        return {"status": "empty", "doc_hash": doc_hash,
+                "reason": "aucun texte extrait (type non pris en charge, fichier vide "
+                          "ou scan sans OCR : essayer la stratégie OCR)"}
+    prep = prepare_document(base_id, doc_hash, chunks, top_keywords, yake_pool, progress)
+    return {"status": "ok", "doc_hash": doc_hash, "chunks": chunks, "prep": prep}
 
 
 def ingest_file(base_id: str, file_path: str, file_name: Optional[str] = None,
@@ -117,28 +180,20 @@ def ingest_file(base_id: str, file_path: str, file_name: Optional[str] = None,
     La déduplication s'appuie sur le hash du fichier (avant tout parsing coûteux).
     Les images forcent l'OCR quelle que soit la stratégie (cf. parsers.parse_file).
     """
-    p = Path(file_path)
-    file_name = file_name or p.name
-    data = p.read_bytes()
-    doc_hash = file_hash(data)
-
-    if skip_if_indexed and is_indexed(base_id, doc_hash):
-        return {"indexed": 0, "skipped": True, "reason": "document déjà indexé"}
-
-    # Import paresseux pour éviter tout cycle (parsers importe ingest.Chunk).
-    from core.parsers import parse_file
-    chunks = parse_file(file_path, file_name, strategy)
-    if not chunks:
-        return {"indexed": 0, "pages": 0, "skipped": False,
-                "reason": "aucun texte extrait (type non pris en charge, fichier vide "
-                          "ou scan sans OCR : essayer la stratégie OCR)"}
-    return index_chunks(base_id, doc_hash, chunks, top_keywords, skip_if_indexed=False)
+    pf = prepare_file(base_id, file_path, file_name, strategy, top_keywords, skip_if_indexed)
+    if pf["status"] == "skipped":
+        return {"indexed": 0, "skipped": True, "reason": pf["reason"]}
+    if pf["status"] == "empty":
+        return {"indexed": 0, "pages": 0, "skipped": False, "reason": pf["reason"]}
+    return embed_and_upsert(base_id, pf["doc_hash"], pf["chunks"], pf["prep"])
 
 
 def reindex_file(base_id: str, file_path: str, file_name: Optional[str] = None,
                  strategy: str = "fast", top_keywords: int = 8) -> dict[str, Any]:
     """Ré-analyse un document : purge ses points existants puis réindexe."""
     name = file_name or Path(file_path).name
-    vectorstore.delete_by_file(base_id, name)
-    return ingest_file(base_id, file_path, file_name=name, strategy=strategy,
-                       top_keywords=top_keywords, skip_if_indexed=False)
+    pf = prepare_file(base_id, file_path, name, strategy, top_keywords, skip_if_indexed=False)
+    if pf["status"] == "empty":
+        vectorstore.delete_by_file(base_id, name)  # purge même si plus rien d'exploitable
+        return {"indexed": 0, "pages": 0, "skipped": False, "reason": pf["reason"]}
+    return embed_and_upsert(base_id, pf["doc_hash"], pf["chunks"], pf["prep"], delete_file=name)

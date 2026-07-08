@@ -950,6 +950,8 @@ async def admin_models(request: Request):
         "installed": await _installed_models(),
         "generation_models": await _generation_models(),
         "defaults": appsettings.load_defaults(),
+        "index_workers": appsettings.get_index_workers(),
+        "index_workers_max": appsettings.INDEX_WORKERS_MAX,
     })
 
 
@@ -971,6 +973,8 @@ async def admin_models_save(request: Request):
             "threshold": form.get("threshold"),
         }
         appsettings.save_defaults(overrides)
+        if form.get("index_workers") is not None:
+            appsettings.set_index_workers(form.get("index_workers"))
         db.insert_audit("settings_update", user["id"], user["username"],
                         client_ip(request), _ua(request), "")
     return RedirectResponse("/admin/models", status_code=303)
@@ -1097,13 +1101,28 @@ async def contribute_job_stream(request: Request, job_id: str):
                 yield _sse("error", {"message": "job introuvable"})
                 return
             yield _sse("progress", job)
-            if job.get("status") == "done":
+            if job.get("status") in ("done", "stopped"):
                 yield _sse("done", job)
                 return
             await asyncio.sleep(0.7)
 
     return StreamingResponse(gen(), media_type="text/event-stream",
                              headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"})
+
+
+@app.post("/contribute/jobs/{job_id}/stop")
+async def contribute_job_stop(request: Request, job_id: str, csrf_token: str = Form(...)):
+    """Demande l'arrêt souple d'un import (termine le fichier en cours puis stoppe)."""
+    user, resp = _guard(request, auth.ROLE_CONTRIBUTOR)
+    if resp:
+        return resp
+    if not _check_csrf(request, csrf_token):
+        return JSONResponse({"error": "CSRF invalide"}, status_code=403)
+    ok = importer.request_stop(job_id)
+    if ok:
+        db.insert_audit("import_stop", user["id"], user["username"],
+                        client_ip(request), _ua(request), f"job={job_id}")
+    return JSONResponse({"stopping": ok})
 
 
 # --------------------------------------------------------------------------

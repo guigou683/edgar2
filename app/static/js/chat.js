@@ -320,8 +320,10 @@ document.addEventListener("DOMContentLoaded", () => {
 
   // --- Import / ré-analyse en tâche de fond (progression dynamique) ---
   const jobPanel = document.querySelector("[data-job-panel]");
+  const jobDone = (job) => job.status === "done" || job.status === "stopped";
   function fmtETA(job) {
-    if (!job.total || !job.done || job.status === "done") return job.status === "done" ? "terminé" : "";
+    if (jobDone(job)) return job.status === "stopped" ? "arrêté" : "terminé";
+    if (!job.total || !job.done) return "";
     const el = (Date.now() / 1000) - job.started;
     const s = Math.max(0, Math.round(el / job.done * (job.total - job.done)));
     return "≈ " + (s >= 60 ? Math.round(s / 60) + " min" : s + " s") + " restant";
@@ -349,10 +351,31 @@ document.addEventListener("DOMContentLoaded", () => {
     q("[data-job-skip]").textContent = job.skipped;
     q("[data-job-fail]").textContent = job.failed;
     q("[data-job-eta]").textContent = fmtETA(job);
-    q(".job-title").textContent = job.status === "done" ? "Import terminé" : "Import en cours…";
-    q("[data-job-current]").textContent = job.status === "done" ? "Terminé." : (job.current ? "En cours : " + job.current : "");
+    const done = jobDone(job);
+    q(".job-title").textContent = job.status === "stopped" ? "Import arrêté"
+      : (job.status === "done" ? "Import terminé" : "Import en cours…");
+    let cur = "";
+    if (job.status === "stopped") cur = "Arrêté après le fichier en cours.";
+    else if (job.status === "done") cur = "Terminé.";
+    else if (job.sub && job.sub.stage) {
+      const L = { analyse: "Analyse…", ocr: "OCR", keywords: "Mots-clés", index: "Indexation" };
+      const f = (job.sub.file || job.current || "").split("/").pop();
+      cur = "En cours : " + f + " — " + (L[job.sub.stage] || job.sub.stage);
+      if (job.sub.total) cur += " " + job.sub.done + "/" + job.sub.total;
+    } else if (job.current) {
+      cur = "En cours : " + job.current.split("/").pop();
+    }
+    q("[data-job-current]").textContent = cur;
+    const stopBtn = q("[data-job-stop]");
+    if (stopBtn) {
+      stopBtn.hidden = done;
+      if (!done) {
+        stopBtn.disabled = !!job.stop;
+        stopBtn.textContent = job.stop ? "Arrêt en cours…" : "Arrêter l'import";
+      }
+    }
     const stats = q("[data-job-stats]");
-    if (job.status === "done") {
+    if (done) {
       const dur = (job.finished && job.started) ? fmtDur(job.finished - job.started) : "—";
       stats.hidden = false;
       stats.innerHTML = "⏱ Durée totale : <b>" + dur + "</b> · 💾 Taille indexée : <b>"
@@ -367,15 +390,31 @@ document.addEventListener("DOMContentLoaded", () => {
     }
   }
   function trackJob(jobId) {
+    if (jobPanel) jobPanel.dataset.jobId = jobId;
     const es = new EventSource("/contribute/jobs/" + jobId + "/stream");
     es.addEventListener("progress", (e) => renderJob(JSON.parse(e.data)));
     es.addEventListener("done", (e) => {
       renderJob(JSON.parse(e.data));
       es.close();
       // Sur la page Documents, rafraîchir pour afficher les nouveaux statuts.
-      if (document.querySelector("[data-reload-on-job]")) setTimeout(() => location.reload(), 1200);
+      if (document.querySelector("[data-reload-on-job]")) setTimeout(() => location.reload(), 1500);
     });
     es.addEventListener("error", () => es.close());
+  }
+  // Bouton « Arrêter l'import » : arrêt souple (le serveur finit le fichier en cours).
+  if (jobPanel) {
+    const stopBtn = jobPanel.querySelector("[data-job-stop]");
+    if (stopBtn) stopBtn.addEventListener("click", async () => {
+      const jobId = jobPanel.dataset.jobId;
+      if (!jobId) return;
+      stopBtn.disabled = true;
+      stopBtn.textContent = "Arrêt en cours…";
+      try {
+        const fd = new FormData();
+        fd.append("csrf_token", jobPanel.dataset.csrf || "");
+        await fetch("/contribute/jobs/" + jobId + "/stop", { method: "POST", body: fd });
+      } catch (err) { /* le flux SSE reflétera l'état */ }
+    });
   }
   document.querySelectorAll("[data-import-form]").forEach((form) => {
     form.addEventListener("submit", async (e) => {
