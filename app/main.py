@@ -533,30 +533,40 @@ async def serve_doc(request: Request, base_id: str, filename: str,
 # --------------------------------------------------------------------------
 # Recherche & gestion des documents
 # --------------------------------------------------------------------------
-def _sync_documents(base_id: str) -> int:
-    """Enregistre (statut 'pending') les fichiers présents sur disque mais absents
-    du registre — sans requête Qdrant (scalable). Renvoie le nombre ajouté. Appelé
-    à la demande (bouton « Synchroniser »), plus à chaque affichage de la page."""
+def _sync_documents(base_id: str) -> dict[str, int]:
+    """Aligne le registre sur le contenu du dossier (sans requête Qdrant, scalable) :
+      - enregistre en 'pending' les fichiers présents sur disque mais pas au registre ;
+      - purge les entrées dont le fichier a disparu (déplacé/supprimé) + leurs points.
+    Comparaison sur le CHEMIN RELATIF complet (un fichier déplacé dans un sous-dossier
+    est bien vu comme nouveau). Appelé à la demande (bouton « Synchroniser »)."""
     try:
         docs_dir = safe_join(settings.DOCUMENTS_DIR, base_id)
     except ValueError:
-        return 0
+        return {"added": 0, "removed": 0}
     if not docs_dir.exists():
-        return 0
+        return {"added": 0, "removed": 0}
+    on_disk: dict[str, int] = {}
+    for p in docs_dir.rglob("*"):
+        if p.is_file():
+            try:
+                on_disk[p.relative_to(docs_dir).as_posix()] = p.stat().st_size
+            except OSError:
+                on_disk[p.relative_to(docs_dir).as_posix()] = 0
     known = set(db.list_document_names(base_id))
     added = 0
-    for p in docs_dir.rglob("*"):
-        if not p.is_file():
-            continue
-        rel = p.relative_to(docs_dir).as_posix()
-        if rel in known or p.name in known:   # déjà connu (rel) ou entrée héritée (nom)
-            continue
+    for rel, size in on_disk.items():
+        if rel not in known:
+            db.upsert_document(base_id, rel, "pending", 0, 0, None, size, None)
+            added += 1
+    removed = 0
+    for name in known - set(on_disk):          # fichier disparu du disque -> purge
         try:
-            size = p.stat().st_size
-        except OSError:
-            size = 0
-        db.upsert_document(base_id, rel, "pending", 0, 0, None, size, None)
-        added += 1
+            vectorstore.delete_by_file(base_id, name)
+        except Exception:
+            pass
+        db.delete_document_row(base_id, name)
+        removed += 1
+    return {"added": added, "removed": removed}
     return added
 
 
@@ -585,7 +595,7 @@ DOCS_PER_PAGE = 100
 
 @app.get("/documents")
 async def documents_page(request: Request, base: Optional[str] = None, q: str = "",
-                         status: str = "", folder: str = "", page: int = 1):
+                         status: str = "", folder: str = "", page: int = 1, synced: str = ""):
     """Consultation paginée des documents (scalable à des dizaines de milliers)."""
     user = auth.current_user(request)
     if not user:
@@ -610,10 +620,18 @@ async def documents_page(request: Request, base: Optional[str] = None, q: str = 
         folders = await run_in_threadpool(
             lambda: _documents_folders(db.list_document_names(base_id)))
     pages_total = max(1, (total + DOCS_PER_PAGE - 1) // DOCS_PER_PAGE)
+    sync_msg = ""
+    if synced:
+        try:
+            a, r = (int(x) for x in synced.split("."))
+            sync_msg = (f"Synchronisation : {a} fichier(s) ajouté(s) en attente, "
+                        f"{r} entrée(s) obsolète(s) retirée(s).")
+        except (ValueError, TypeError):
+            sync_msg = ""
     return _render_with_csrf(request, "documents.html", {
         "user": user, "title": "Documents", "bases": all_bases, "base_id": base_id,
         "documents": documents, "overview": overview, "folders": folders,
-        "q": q, "status": status, "folder": folder,
+        "q": q, "status": status, "folder": folder, "sync_msg": sync_msg,
         "page": page, "pages_total": pages_total, "total": total, "per_page": DOCS_PER_PAGE,
         "can_manage": auth.has_role(user, auth.ROLE_CONTRIBUTOR),
     })
@@ -626,9 +644,11 @@ async def documents_sync(request: Request, base_id: str = Form(...), csrf_token:
     if resp:
         return resp
     if _check_csrf(request, csrf_token) and bases.get_base(base_id):
-        n = await run_in_threadpool(_sync_documents, base_id)
-        db.insert_audit("documents_sync", user["id"], user["username"],
-                        client_ip(request), _ua(request), f"base={base_id} ajoutés={n}")
+        res = await run_in_threadpool(_sync_documents, base_id)
+        db.insert_audit("documents_sync", user["id"], user["username"], client_ip(request),
+                        _ua(request), f"base={base_id} ajoutés={res['added']} retirés={res['removed']}")
+        return RedirectResponse(
+            f"/documents?base={base_id}&synced={res['added']}.{res['removed']}", status_code=303)
     return RedirectResponse(f"/documents?base={base_id}", status_code=303)
 
 

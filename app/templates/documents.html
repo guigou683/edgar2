@@ -131,6 +131,8 @@
 <div class="admin doc-page" data-reload-on-job>
   <h1>Documents</h1>
 
+  {% if sync_msg %}<p class="alert alert-ok">{{ sync_msg }}</p>{% endif %}
+
   {% if base_id %}
   {% set status_colors = {'indexed': '#4f9e7a', 'failed': '#c0566a', 'pending': '#b8923f', '?': '#7a8296'} %}
   {% set strat_colors = {'fast': '#4a7bc0', 'ocr_only': '#8a5bc0', 'fast (OCR auto)': '#3fa7bd', '—': '#7a8296'} %}

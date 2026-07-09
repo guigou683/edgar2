@@ -12,7 +12,7 @@ from pathlib import Path
 class Settings:
     """Paramètres applicatifs résolus au démarrage."""
 
-    VERSION: str = "1.3.4"
+    VERSION: str = "1.3.5"
 
     # --- Services internes ---
     OLLAMA_URL: str = os.environ.get("OLLAMA_URL", "http://ollama:11434")
