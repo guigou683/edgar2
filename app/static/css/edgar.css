@@ -219,6 +219,7 @@ a.btn-new { display: block; text-align: center; text-decoration: none; }
 .pf { padding: 12px 0; border-bottom: 1px solid var(--border); }
 .pf-label { font-size: 13px; color: var(--text); margin-bottom: 8px; }
 .pf-control { display: flex; align-items: center; gap: 10px; }
+.pf-control .info-i { margin-left: auto; }   /* info toujours à droite (évite le chevauchement avec le toggle) */
 .pf-control select { flex: 1; background: var(--bg); color: var(--text); border: 1px solid var(--border); border-radius: 8px; padding: 8px 10px; font-size: 14px; }
 .pf-control input[type="range"] { flex: 1; accent-color: var(--marine-acc); }
 .pf-val { color: var(--or); font-weight: 600; min-width: 30px; text-align: right; }
@@ -393,7 +394,64 @@ a.btn-mini { text-decoration: none; display: inline-block; }
 
 /* --- Arborescence des documents --- */
 .doc-tree-card { max-width: 100%; padding: 8px; }
-.tree-toolbar { display: flex; gap: 8px; padding: 4px 6px 10px; border-bottom: 1px solid var(--border); margin-bottom: 6px; }
+.tree-toolbar { display: flex; gap: 8px; padding: 4px 6px 10px; border-bottom: 1px solid var(--border); margin-bottom: 6px; align-items: center; flex-wrap: wrap; }
+
+/* --- Page Documents paginée (scalable) --- */
+.doc-toolbar { display: flex; gap: 16px; justify-content: space-between; align-items: flex-start; flex-wrap: wrap; margin: 6px 0 14px; }
+.doc-searchform { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+.doc-searchform input[type="text"] { min-width: 240px; background: var(--bg); color: var(--text); border: 1px solid var(--border); border-radius: 8px; padding: 8px 12px; font-size: 14px; }
+.doc-searchform select { background: var(--bg); color: var(--text); border: 1px solid var(--border); border-radius: 8px; padding: 8px 10px; font-size: 14px; }
+.doc-actions { display: flex; gap: 8px; flex-wrap: wrap; }
+.doc-page { padding-left: 20px; padding-right: 20px; }   /* colle davantage le contenu aux bords */
+.doc-layout { display: flex; gap: 10px; align-items: flex-start; }
+.doc-folders { flex: 0 0 33%; min-width: 260px; padding: 8px; max-height: 70vh; overflow: auto; }
+/* Sous-dossiers légèrement décalés + guide vertical pour voir les niveaux */
+.doc-folders .tree-dir .tree-dir { padding-left: 14px; margin-left: 7px; border-left: 1px solid var(--border); }
+.doc-list { flex: 1; min-width: 0; max-width: none; padding: 8px; }
+.doc-folders { max-width: none; }
+.doc-list-head { padding: 4px 8px 10px; border-bottom: 1px solid var(--border); margin-bottom: 6px; }
+/* Navigateur : 1 ligne par dossier (nom ellipsis + Analyser/Ré-analyser à droite) */
+.doc-folders .tree-dir > summary { gap: 6px; }
+.fnav-link { text-decoration: none; flex: 1 1 auto; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.doc-folders .tree-count { flex-shrink: 0; }
+.doc-folders .tree-actions { flex-shrink: 0; }
+.doc-folders .tree-actions .btn-mini { white-space: nowrap; padding: 3px 7px; font-size: 11px; }
+.fnav-link.on, a.btn-mini.on { outline: 2px solid var(--marine-acc); }
+.btn-mini.disabled { background: #2a3342; color: #6b7488; cursor: not-allowed; }
+.doc-pager { display: flex; align-items: center; justify-content: center; gap: 14px; padding: 14px 0 4px; border-top: 1px solid var(--border); margin-top: 8px; }
+@media (max-width: 900px) { .doc-layout { flex-direction: column; } .doc-folders { flex: none; width: 100%; max-height: 40vh; } }
+
+/* --- Tableau des documents (1 fichier = 1 ligne) --- */
+.doc-table-wrap { overflow: visible; }
+.doc-table { width: 100%; border-collapse: collapse; font-size: 14px; }
+.doc-table th { text-align: left; font-size: 12px; font-weight: 600; color: var(--text-muted);
+  padding: 8px 10px; border-bottom: 1px solid var(--border); white-space: nowrap; }
+.doc-table td { padding: 8px 10px; border-bottom: 1px solid var(--border); vertical-align: middle; white-space: nowrap; }
+.dt-row:hover td { background: var(--bg); }
+.dt-name { width: 100%; max-width: 0; }   /* absorbe l'espace libre -> Actions collées à droite */
+.dt-name span { display: block; max-width: 100%; overflow: hidden; text-overflow: ellipsis;
+  white-space: nowrap; vertical-align: middle; color: var(--text); }
+.dt-num { text-align: right; }
+.dt-actions, .dt-actions-h { text-align: right; white-space: nowrap; }
+.dt-actions a, .dt-actions .link-btn { margin: 0 6px; }
+.dt-actions form { display: inline-flex; align-items: center; gap: 6px; margin: 0 0 0 6px; }
+.dt-actions > form > select { background: var(--bg); color: var(--text); border: 1px solid var(--border);
+  border-radius: 6px; padding: 4px 6px; font-size: 12px; }
+.dt-error-row td { color: #f3b6bd; padding-top: 0; white-space: normal; }
+
+/* Menu « ⋯ » par ligne (Ré-analyser / Supprimer) */
+.dt-menu { display: inline-block; position: relative; margin-left: 6px; }
+.dt-menu > summary { list-style: none; cursor: pointer; padding: 2px 9px; border: 1px solid var(--border);
+  border-radius: 6px; color: var(--text-muted); user-select: none; }
+.dt-menu > summary::-webkit-details-marker { display: none; }
+.dt-menu > summary:hover, .dt-menu[open] > summary { color: var(--text); border-color: var(--marine-acc); }
+.dt-menu-pop { position: absolute; right: 0; top: calc(100% + 4px); z-index: 30; min-width: 210px;
+  background: var(--bg-elev); border: 1px solid var(--border); border-radius: 10px; padding: 10px;
+  box-shadow: 0 6px 20px rgba(0,0,0,.45); display: flex; flex-direction: column; gap: 10px; white-space: normal; }
+.dt-menu-item { display: flex; align-items: flex-end; gap: 8px; margin: 0; }
+.dt-menu-item label { display: flex; flex-direction: column; gap: 4px; font-size: 12px; color: var(--text-muted); }
+.dt-menu-item select { background: var(--bg); color: var(--text); border: 1px solid var(--border);
+  border-radius: 6px; padding: 5px 8px; font-size: 13px; }
 .doc-tree { display: flex; flex-direction: column; }
 .tree-dir > summary { list-style: none; cursor: pointer; display: flex; align-items: center; gap: 8px;
   padding: 7px 8px; padding-left: calc(var(--depth) * 18px + 8px); border-radius: 8px; user-select: none; }
@@ -404,6 +462,9 @@ a.btn-mini { text-decoration: none; display: inline-block; }
 .tree-folder { font-weight: 600; color: var(--text); }
 .tree-count { font-size: 11px; color: var(--text-muted); background: var(--bg); border: 1px solid var(--border);
   border-radius: 10px; padding: 0 8px; }
+.tree-actions { margin-left: auto; display: inline-flex; gap: 6px; }
+.tree-actions .inline-form { display: inline-flex; gap: 6px; }
+.tree-actions .btn-mini { padding: 2px 8px; font-size: 11px; }
 .tree-file { display: flex; align-items: center; gap: 12px; flex-wrap: wrap;
   padding: 6px 8px; padding-left: calc(var(--depth) * 18px + 30px); border-radius: 8px; }
 .tree-file:hover { background: var(--bg); }

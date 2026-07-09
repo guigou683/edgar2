@@ -59,6 +59,32 @@ def embed_query(text: str, model: str | None = None) -> list[float]:
 
 
 # --------------------------------------------------------------------------
+# Chargement des modèles (pour afficher « Chargement du modèle… » à froid)
+# --------------------------------------------------------------------------
+def model_loaded(model: str | None = None) -> bool:
+    """Vrai si le modèle est déjà résident (Ollama /api/ps). En cas de doute
+    (Ollama injoignable), renvoie True pour ne pas afficher un chargement à tort."""
+    model = model or settings.LLM_MODEL
+    try:
+        with httpx.Client(timeout=5.0) as client:
+            r = client.get(f"{settings.OLLAMA_URL}/api/ps")
+            r.raise_for_status()
+            names = [m.get("name", "") for m in r.json().get("models", [])]
+            return any(n == model or n.startswith(model) for n in names)
+    except Exception:
+        return True
+
+
+def preload(model: str | None = None) -> None:
+    """Charge un modèle en mémoire sans générer (prompt vide) — Ollama renvoie une
+    fois le modèle prêt. Utilisé pour matérialiser l'étape « Chargement du modèle »."""
+    model = model or settings.LLM_MODEL
+    with httpx.Client(timeout=180.0) as client:
+        r = client.post(f"{settings.OLLAMA_URL}/api/generate", json={"model": model})
+        r.raise_for_status()
+
+
+# --------------------------------------------------------------------------
 # Re-prompt multi-requêtes (évolution v2)
 # --------------------------------------------------------------------------
 _REFORMULATE_SYSTEM = (

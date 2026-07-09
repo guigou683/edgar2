@@ -38,66 +38,104 @@
 </div>
 {% endmacro %}
 
-{# --- Ligne fichier (réutilisée dans l'arbre) --- #}
-{% macro file_row(d, base_id, can_manage, csrf_token, depth) %}
+{# --- Ligne fichier (1 fichier = 1 ligne). compact=vrai -> actions de gestion
+      repliées dans un menu « ⋯ » (quand la place est prise par le navigateur). --- #}
+{% macro reanalyze_form(d, base_id, csrf_token, label) %}
+<form class="{{ 'dt-menu-item' if label else 'inline-form' }}" data-import-form>
+  <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+  <input type="hidden" name="base_id" value="{{ base_id }}">
+  <input type="hidden" name="filename" value="{{ d.filename }}">
+  {% if label %}<label>Ré-analyser<select name="strategy" aria-label="Stratégie de ré-analyse">
+    <option value="auto">auto</option><option value="fast">rapide</option><option value="ocr_only">OCR</option>
+  </select></label><button class="btn-mini" type="submit" data-action="/documents/reanalyze">Lancer</button>
+  {% else %}<select name="strategy" aria-label="Stratégie de ré-analyse">
+    <option value="auto">auto</option><option value="fast">rapide</option><option value="ocr_only">OCR</option>
+  </select><button class="btn-mini" type="submit" data-action="/documents/reanalyze">Ré-analyser</button>{% endif %}
+</form>
+{% endmacro %}
+{% macro delete_form(d, base_id, csrf_token, cls) %}
+<form class="{{ cls }}" method="post" action="/documents/delete"
+      data-confirm="Supprimer « {{ d.filename }} » (index + fichier) ?">
+  <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+  <input type="hidden" name="base_id" value="{{ base_id }}">
+  <input type="hidden" name="filename" value="{{ d.filename }}">
+  <button class="btn-mini danger" type="submit">Supprimer</button>
+</form>
+{% endmacro %}
+{% macro file_row(d, base_id, can_manage, csrf_token, compact) %}
 {% set is_pdf = d.filename.lower().endswith('.pdf') %}
 {% set short = d.filename.split('/')[-1] %}
-<div class="tree-file" data-doc-row data-filename="{{ d.filename | lower }}" data-status="{{ d.status }}"
-     style="--depth: {{ depth }}">
-  <span class="tf-name" title="{{ d.filename }}">📄 {{ short }}</span>
-  <span class="tf-status"><span class="pill pill-{{ 'active' if d.status=='indexed' else ('suspended' if d.status=='failed' else 'pending') }}">{{ d.status }}</span></span>
-  <span class="tf-meta help">{{ d.pages or '—' }} p · {{ d.chunks or '—' }} extr · {{ (d.size // 1024) }} Ko · {{ d.strategy or '—' }}</span>
-  <span class="tf-actions">
+<tr class="dt-row">
+  <td class="dt-name"><span title="{{ d.filename }}">📄 {{ short }}</span></td>
+  <td class="dt-status"><span class="pill pill-{{ 'active' if d.status=='indexed' else ('suspended' if d.status=='failed' else 'pending') }}">{{ d.status }}</span></td>
+  <td class="dt-num help">{{ d.pages or '—' }}</td>
+  <td class="dt-num help">{{ d.chunks or '—' }}</td>
+  <td class="dt-num help">{{ (d.size // 1024) }} Ko</td>
+  <td class="dt-strat help">{{ d.strategy or '—' }}</td>
+  <td class="dt-actions">
     {% if is_pdf %}<a href="/doc/{{ base_id }}/{{ d.filename }}" target="_blank" rel="noopener">Ouvrir</a>{% endif %}
     <a href="/doc/{{ base_id }}/{{ d.filename }}?download=1">Télécharger</a>
     {% if d.chunks %}<button type="button" class="link-btn" data-summary
             data-file="{{ d.filename }}" data-base="{{ base_id }}">Résumé</button>{% endif %}
     {% if can_manage %}
-    <form class="inline-form" data-import-form>
-      <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
-      <input type="hidden" name="base_id" value="{{ base_id }}">
-      <input type="hidden" name="filename" value="{{ d.filename }}">
-      <select name="strategy" aria-label="Stratégie de ré-analyse">
-        <option value="auto">auto</option><option value="fast">rapide</option><option value="ocr_only">OCR</option>
-      </select>
-      <button class="btn-mini" type="submit" data-action="/documents/reanalyze">Ré-analyser</button>
-    </form>
-    <form method="post" action="/documents/delete" data-confirm="Supprimer « {{ d.filename }} » (index + fichier) ?">
-      <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
-      <input type="hidden" name="base_id" value="{{ base_id }}">
-      <input type="hidden" name="filename" value="{{ d.filename }}">
-      <button class="btn-mini danger" type="submit">Supprimer</button>
-    </form>
+      {% if compact %}
+      <details class="dt-menu">
+        <summary class="dt-menu-btn" title="Ré-analyser / Supprimer">⋯</summary>
+        <div class="dt-menu-pop">
+          {{ reanalyze_form(d, base_id, csrf_token, true) }}
+          {{ delete_form(d, base_id, csrf_token, "dt-menu-item") }}
+        </div>
+      </details>
+      {% else %}
+      {{ reanalyze_form(d, base_id, csrf_token, false) }}
+      {{ delete_form(d, base_id, csrf_token, "inline-form") }}
+      {% endif %}
     {% endif %}
-  </span>
-  {% if d.status == 'failed' and d.error %}<span class="tf-error help">{{ d.error }}</span>{% endif %}
-</div>
+  </td>
+</tr>
+{% if d.status == 'failed' and d.error %}
+<tr class="dt-error-row"><td colspan="7" class="help">⚠ {{ d.error }}</td></tr>
+{% endif %}
 {% endmacro %}
 
-{# --- Nœud d'arbre : sous-dossiers repliables puis fichiers --- #}
-{% macro tree_node(node, base_id, can_manage, csrf_token, depth) %}
+{# --- Navigateur de DOSSIERS (dossiers seuls, repliables) --- #}
+{% macro folder_nav(node, base_id, can_manage, csrf_token, prefix, cur, q, status) %}
 {% for name, child in node.dirs | dictsort %}
-<details class="tree-dir" data-doc-node>
-  <summary style="--depth: {{ depth }}">
+{% set full = prefix ~ name %}
+<details class="tree-dir"{% if cur.startswith(full) %} open{% endif %}>
+  <summary title="{{ full }}">
     <span class="tree-caret">▸</span>
-    <span class="tree-folder">📁 {{ name }}</span>
+    <a class="tree-folder fnav-link{% if cur == full %} on{% endif %}"
+       href="/documents?base={{ base_id }}&folder={{ full | urlencode }}{% if q %}&q={{ q | urlencode }}{% endif %}{% if status %}&status={{ status }}{% endif %}">📁 {{ name }}</a>
     <span class="tree-count">{{ child.count }}</span>
+    {% if can_manage %}
+    <span class="tree-actions">
+      <form class="inline-form" data-import-form>
+        <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+        <input type="hidden" name="base_id" value="{{ base_id }}">
+        <input type="hidden" name="folder" value="{{ full }}">
+        <button class="btn-mini" type="submit" name="reindex" value="0"
+                data-action="/documents/index-folder" title="Indexer les nouveaux fichiers de ce dossier">Analyser</button>
+        <button class="btn-mini" type="submit" name="reindex" value="1"
+                data-action="/documents/index-folder" title="Ré-indexer tout le dossier">Ré-analyser</button>
+      </form>
+    </span>
+    {% endif %}
   </summary>
-  {{ tree_node(child, base_id, can_manage, csrf_token, depth + 1) }}
+  {{ folder_nav(child, base_id, can_manage, csrf_token, full ~ "/", cur, q, status) }}
 </details>
-{% endfor %}
-{% for d in node.files %}
-{{ file_row(d, base_id, can_manage, csrf_token, depth) }}
 {% endfor %}
 {% endmacro %}
 
 {% block content %}
-<div class="admin" data-reload-on-job>
+<div class="admin doc-page" data-reload-on-job>
   <h1>Documents</h1>
 
   {% if base_id %}
   {% set status_colors = {'indexed': '#4f9e7a', 'failed': '#c0566a', 'pending': '#b8923f', '?': '#7a8296'} %}
   {% set strat_colors = {'fast': '#4a7bc0', 'ocr_only': '#8a5bc0', 'fast (OCR auto)': '#3fa7bd', '—': '#7a8296'} %}
+  {% set pending = overview.by_status.get('pending', 0) %}
+  {% set failed = overview.by_status.get('failed', 0) %}
 
   <div class="doc-overview">
     <div class="stat-tiles">
@@ -112,42 +150,103 @@
     </div>
   </div>
 
-  <div class="doc-search">
-    <input type="text" data-doc-search autocomplete="off"
-           placeholder="Rechercher un document par nom (filtre à la frappe)…">
-    <select data-doc-status>
-      <option value="">Tous les statuts</option>
-      <option value="indexed">Indexés</option>
-      <option value="failed">En échec</option>
-      <option value="pending">En attente</option>
-    </select>
-    {% if can_manage and stats.get('failed', 0) %}
-    <form class="inline-form" data-import-form>
-      <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
-      <input type="hidden" name="base_id" value="{{ base_id }}">
-      <input type="hidden" name="strategy" value="ocr_only">
-      <button class="btn-mini" type="submit" data-action="/documents/retry-failed">Relancer les échecs (OCR)</button>
+  {# --- Barre d'outils : recherche serveur + actions --- #}
+  <div class="doc-toolbar">
+    <form class="doc-searchform" method="get" action="/documents">
+      <input type="hidden" name="base" value="{{ base_id }}">
+      {% if folder %}<input type="hidden" name="folder" value="{{ folder }}">{% endif %}
+      <input type="text" name="q" value="{{ q }}" autocomplete="off"
+             placeholder="Rechercher un document par nom…">
+      <select name="status">
+        <option value="" {% if not status %}selected{% endif %}>Tous les statuts</option>
+        <option value="indexed" {% if status=='indexed' %}selected{% endif %}>Indexés</option>
+        <option value="failed" {% if status=='failed' %}selected{% endif %}>En échec</option>
+        <option value="pending" {% if status=='pending' %}selected{% endif %}>En attente</option>
+      </select>
+      <button class="btn-mini" type="submit">Rechercher</button>
+      {% if q or status %}<a class="help" href="/documents?base={{ base_id }}{% if folder %}&folder={{ folder | urlencode }}{% endif %}">réinitialiser</a>{% endif %}
     </form>
+    {% if can_manage %}
+    <div class="doc-actions">
+      {% if pending %}
+      <form class="inline-form" data-import-form>
+        <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+        <input type="hidden" name="base_id" value="{{ base_id }}">
+        <button class="btn-mini" type="submit" data-action="/documents/index-pending">Analyser les fichiers en attente ({{ pending }})</button>
+      </form>
+      {% endif %}
+      {% if failed %}
+      <form class="inline-form" data-import-form>
+        <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+        <input type="hidden" name="base_id" value="{{ base_id }}">
+        <input type="hidden" name="strategy" value="ocr_only">
+        <button class="btn-mini" type="submit" data-action="/documents/retry-failed">Relancer les échecs (OCR)</button>
+      </form>
+      {% endif %}
+      <form class="inline-form" method="post" action="/documents/sync">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+        <input type="hidden" name="base_id" value="{{ base_id }}">
+        <button class="btn-mini" type="submit" title="Détecter les fichiers copiés dans le dossier hors application">Synchroniser le dossier</button>
+      </form>
+    </div>
     {% endif %}
   </div>
 
   {% include "partials/job_panel.html" %}
 
-  <div class="admin-card doc-tree-card">
-    {% if documents %}
-    {% if tree.dirs %}
-    <div class="tree-toolbar">
-      <button type="button" class="btn-mini" data-tree-collapse>▸ Tout replier</button>
-      <button type="button" class="btn-mini" data-tree-expand>▾ Tout déplier</button>
-    </div>
+  <div class="doc-layout">
+    {# --- Navigateur de dossiers (si sous-dossiers) --- #}
+    {% if folders.dirs %}
+    <aside class="doc-folders admin-card">
+      <div class="tree-toolbar">
+        <a class="btn-mini {% if not folder %}on{% endif %}"
+           href="/documents?base={{ base_id }}{% if q %}&q={{ q | urlencode }}{% endif %}{% if status %}&status={{ status }}{% endif %}">Tous ({{ folders.count }})</a>
+        <button type="button" class="btn-mini" data-tree-collapse>▸</button>
+        <button type="button" class="btn-mini" data-tree-expand>▾</button>
+      </div>
+      {{ folder_nav(folders, base_id, can_manage, csrf_token, "", folder, q, status) }}
+    </aside>
     {% endif %}
-    <div class="doc-tree" data-doc-tree>
-      {{ tree_node(tree, base_id, can_manage, csrf_token, 0) }}
-      <div class="doc-noresult help" data-doc-empty hidden>Aucun document ne correspond.</div>
+
+    {# --- Liste paginée des fichiers --- #}
+    <div class="doc-list admin-card">
+      <div class="doc-list-head help">
+        {% if folder %}Dossier : <b>{{ folder }}</b> · {% endif %}
+        {{ total }} fichier(s){% if q %} pour « {{ q }} »{% endif %}{% if status %} · statut « {{ status }} »{% endif %}
+        {% if pages_total > 1 %} · page {{ page }}/{{ pages_total }}{% endif %}
+      </div>
+      {% if documents %}
+      <div class="doc-table-wrap">
+        <table class="doc-table">
+          <thead>
+            <tr>
+              <th>Document</th><th>Statut</th><th>Pages</th><th>Extraits</th>
+              <th>Taille</th><th>Stratégie</th><th class="dt-actions-h">Actions</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% set compact = folders.dirs | length > 0 %}
+            {% for d in documents %}
+            {{ file_row(d, base_id, can_manage, csrf_token, compact) }}
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+      {% else %}
+      <p class="help">Aucun document{% if q or status or folder %} ne correspond{% endif %}.</p>
+      {% endif %}
+
+      {% if pages_total > 1 %}
+      {% set base_qs = 'base=' ~ base_id ~ (folder and '&folder=' ~ (folder | urlencode) or '') ~ (q and '&q=' ~ (q | urlencode) or '') ~ (status and '&status=' ~ status or '') %}
+      <div class="doc-pager">
+        {% if page > 1 %}<a class="btn-mini" href="/documents?{{ base_qs }}&page={{ page - 1 }}">← Précédent</a>
+        {% else %}<span class="btn-mini disabled">← Précédent</span>{% endif %}
+        <span class="help">Page {{ page }} / {{ pages_total }}</span>
+        {% if page < pages_total %}<a class="btn-mini" href="/documents?{{ base_qs }}&page={{ page + 1 }}">Suivant →</a>
+        {% else %}<span class="btn-mini disabled">Suivant →</span>{% endif %}
+      </div>
+      {% endif %}
     </div>
-    {% else %}
-    <p class="help">Aucun document dans cette base.</p>
-    {% endif %}
   </div>
 
   {# Modale de résumé LLM #}

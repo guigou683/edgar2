@@ -23,7 +23,11 @@ SYSTEM_PROMPT = (
     "Tu réponds UNIQUEMENT à partir des extraits numérotés fournis dans le contexte. "
     "Cite systématiquement tes sources avec leur numéro entre crochets, par exemple [1] ou [2]. "
     "Si l'information demandée n'est pas présente dans le contexte, indique-le explicitement "
-    "et n'invente jamais de réponse."
+    "et n'invente jamais de réponse. "
+    "Mets en forme ta réponse en Markdown. Pour toute énumération ou suite d'étapes, utilise "
+    "une vraie liste Markdown : un élément par ligne, chaque ligne commençant par « - » "
+    "(liste à puces) ou « 1. », « 2. », « 3. »… (liste numérotée), avec un retour à la ligne "
+    "entre chaque élément. N'écris jamais plusieurs étapes à la suite sur une même ligne."
 )
 
 NOT_FOUND_MESSAGE = (

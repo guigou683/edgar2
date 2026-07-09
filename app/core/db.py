@@ -430,6 +430,50 @@ def get_document(base_id: str, filename: str) -> Optional[dict[str, Any]]:
         return dict(row) if row else None
 
 
+def list_document_names(base_id: str) -> list[str]:
+    """Uniquement les noms de fichiers (léger) — pour construire l'arbre de dossiers."""
+    with get_conn() as conn:
+        return [r["filename"] for r in conn.execute(
+            "SELECT filename FROM documents WHERE base_id = ?", (base_id,)).fetchall()]
+
+
+def document_overview(base_id: str) -> dict[str, Any]:
+    """Statistiques agrégées d'une base, calculées en SQL (sans charger les lignes)."""
+    with get_conn() as conn:
+        r = conn.execute(
+            "SELECT COUNT(*) n, COALESCE(SUM(chunks),0) chunks, COALESCE(SUM(pages),0) pages, "
+            "COALESCE(SUM(size),0) size FROM documents WHERE base_id = ?", (base_id,)).fetchone()
+        by_status = {row["status"]: row["n"] for row in conn.execute(
+            "SELECT status, COUNT(*) n FROM documents WHERE base_id = ? GROUP BY status", (base_id,))}
+        by_strategy = {(row["strategy"] or "—"): row["n"] for row in conn.execute(
+            "SELECT strategy, COUNT(*) n FROM documents WHERE base_id = ? GROUP BY strategy", (base_id,))}
+    return {"files": r["n"], "chunks": r["chunks"], "pages": r["pages"], "size": r["size"],
+            "by_status": by_status, "by_strategy": by_strategy}
+
+
+def list_documents_page(base_id: str, query: Optional[str] = None, status: Optional[str] = None,
+                        folder: Optional[str] = None, offset: int = 0,
+                        limit: int = 100) -> tuple[list[dict[str, Any]], int]:
+    """Listing paginé + filtré (nom, statut, sous-dossier). Renvoie (lignes, total)."""
+    where = "WHERE base_id = ?"
+    args: list[Any] = [base_id]
+    if query:
+        where += " AND filename LIKE ?"
+        args.append(f"%{query}%")
+    if status:
+        where += " AND status = ?"
+        args.append(status)
+    if folder:
+        where += " AND filename LIKE ?"
+        args.append(f"{folder.rstrip('/')}/%")
+    with get_conn() as conn:
+        total = conn.execute(f"SELECT COUNT(*) n FROM documents {where}", args).fetchone()["n"]
+        rows = [dict(r) for r in conn.execute(
+            f"SELECT * FROM documents {where} ORDER BY filename LIMIT ? OFFSET ?",
+            (*args, limit, offset)).fetchall()]
+    return rows, total
+
+
 def delete_document_row(base_id: str, filename: str) -> None:
     with get_conn() as conn:
         conn.execute("DELETE FROM documents WHERE base_id = ? AND filename = ?",

@@ -422,12 +422,33 @@ document.addEventListener("DOMContentLoaded", () => {
       const btn = e.submitter || form.querySelector("[data-action]");
       const action = btn ? btn.getAttribute("data-action") : form.getAttribute("action");
       try {
-        const r = await fetch(action, { method: "POST", body: new FormData(form) });
+        // FormData(form, btn) inclut le name/value du bouton cliqué (ex. reindex 0/1).
+        const r = await fetch(action, { method: "POST", body: new FormData(form, btn) });
         const data = await r.json();
-        if (data.job_id) trackJob(data.job_id);
-        else alert(data.error || "Échec du lancement.");
+        if (data.busy && data.job_id) {
+          alert("Un import est déjà en cours pour cette base. Il s'affiche ci-dessous ; réessayez une fois terminé.");
+          trackJob(data.job_id);
+        } else if (data.job_id) {
+          trackJob(data.job_id);
+        } else {
+          alert(data.error || "Échec du lancement.");
+        }
       } catch (err) { alert("Erreur réseau."); }
     });
+  });
+
+  // Au chargement : si un import tourne déjà (en arrière-plan), réafficher l'encart.
+  if (jobPanel) {
+    const ab = jobPanel.getAttribute("data-active-base") || "";
+    fetch("/contribute/jobs/active" + (ab ? "?base=" + encodeURIComponent(ab) : ""))
+      .then((r) => r.json())
+      .then((d) => { if (d.job && d.job.id) { renderJob(d.job); trackJob(d.job.id); } })
+      .catch(() => {});
+  }
+
+  // Boutons d'action d'un dossier (dans le <summary>) : ne pas replier/déplier au clic.
+  document.querySelectorAll(".tree-actions").forEach((el) => {
+    el.addEventListener("click", (e) => e.stopPropagation());
   });
 
   // --- Recherche de documents : filtre live (nom + statut), arbre replié ---

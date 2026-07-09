@@ -28,7 +28,7 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from starlette.concurrency import run_in_threadpool
 
-from core import appsettings, auth, bases, db, importer, ingest, rag, retrieval, vectorstore
+from core import appsettings, auth, bases, db, importer, ingest, llm, rag, retrieval, vectorstore
 from core.config import settings
 from core.security import (
     CSP_POLICY,
@@ -206,6 +206,19 @@ async def chat_stream(request: Request):
     # par Starlette : la boucle asynchrone n'est pas bloquée. Chaque étape est
     # diffusée en direct (affichage type « recherche »), puis la génération.
     def event_stream():
+        gen_model = params.llm_model
+        model_warm = False
+        # Modèle froid + re-prompt : le 1er usage LLM (reformulation) chargerait le
+        # modèle (~1 min) sous une étape trompeuse -> on matérialise le chargement.
+        if params.use_reprompt:
+            try:
+                if not llm.model_loaded(gen_model):
+                    yield _sse("step", {"label": "Chargement du modèle…"})
+                    llm.preload(gen_model)
+                model_warm = True
+            except Exception:
+                pass
+
         out = {"results": [], "diagnostics": {}}
         try:
             for ev in retrieval.retrieve_iter(base_id, question, params):
@@ -228,10 +241,23 @@ async def chat_stream(request: Request):
                 parts.append(rag.NOT_FOUND_MESSAGE)
                 yield _sse("token", {"t": rag.NOT_FOUND_MESSAGE})
             elif not prep["search_mode"]:
+                # Chargement à froid (cas sans re-prompt) avant la génération.
+                if not model_warm:
+                    try:
+                        if not llm.model_loaded(gen_model):
+                            yield _sse("step", {"label": "Chargement du modèle…"})
+                            llm.preload(gen_model)
+                    except Exception:
+                        pass
                 yield _sse("step", {"label": "Génération de la réponse…"})
-                for tok in rag.generate_answer(prep["prompt"], model=params.llm_model):
+                for tok in rag.generate_answer(prep["prompt"], model=gen_model):
                     parts.append(tok)
                     yield _sse("token", {"t": tok})
+                # Reprise si la réponse est vide (aléa du 1er appel à froid) — une fois.
+                if not "".join(parts).strip():
+                    for tok in rag.generate_answer(prep["prompt"], model=gen_model):
+                        parts.append(tok)
+                        yield _sse("token", {"t": tok})
         except Exception as exc:  # robustesse : on signale sans planter le flux
             yield _sse("error", {"message": f"Erreur de génération ({type(exc).__name__})."})
 
@@ -507,81 +533,43 @@ async def serve_doc(request: Request, base_id: str, filename: str,
 # --------------------------------------------------------------------------
 # Recherche & gestion des documents
 # --------------------------------------------------------------------------
-def _reconcile_documents(base_id: str) -> None:
-    """Renseigne le registre pour les fichiers présents sur disque mais absents
-    de la table (ex. documents indexés avant cette version)."""
-    from qdrant_client import models as qm
+def _sync_documents(base_id: str) -> int:
+    """Enregistre (statut 'pending') les fichiers présents sur disque mais absents
+    du registre — sans requête Qdrant (scalable). Renvoie le nombre ajouté. Appelé
+    à la demande (bouton « Synchroniser »), plus à chaque affichage de la page."""
     try:
         docs_dir = safe_join(settings.DOCUMENTS_DIR, base_id)
     except ValueError:
-        return
+        return 0
     if not docs_dir.exists():
-        return
-    known = {d["filename"] for d in db.list_documents(base_id)}
-    client = vectorstore.get_client()
-    coll = vectorstore.collection_name(base_id)
-    exists = client.collection_exists(coll)
-    for p in sorted(docs_dir.rglob("*")):
+        return 0
+    known = set(db.list_document_names(base_id))
+    added = 0
+    for p in docs_dir.rglob("*"):
         if not p.is_file():
             continue
-        rel = p.relative_to(docs_dir).as_posix()  # préserve les sous-dossiers
-        # rel déjà connu ; ou entrée héritée sous le seul nom (évite un doublon).
-        if rel in known or p.name in known:
+        rel = p.relative_to(docs_dir).as_posix()
+        if rel in known or p.name in known:   # déjà connu (rel) ou entrée héritée (nom)
             continue
-        cnt = 0
-        if exists:
-            try:
-                cnt = client.count(coll, exact=True, count_filter=qm.Filter(must=[
-                    qm.FieldCondition(key="file", match=qm.MatchValue(value=rel))])).count
-            except Exception:
-                cnt = 0
-        db.upsert_document(base_id, rel, "indexed" if cnt else "pending",
-                           cnt, 0, None, p.stat().st_size, None)
+        try:
+            size = p.stat().st_size
+        except OSError:
+            size = 0
+        db.upsert_document(base_id, rel, "pending", 0, 0, None, size, None)
+        added += 1
+    return added
 
 
-@app.get("/documents")
-async def documents_page(request: Request, base: Optional[str] = None,
-                         q: str = "", status: str = ""):
-    """Recherche/consultation de documents — accessible à tous les rôles."""
-    user = auth.current_user(request)
-    if not user:
-        return RedirectResponse("/login", status_code=303)
-    if user["must_change_password"]:
-        return RedirectResponse("/change-password", status_code=303)
-    all_bases = bases.load_bases()
-    base_id = base or (all_bases[0]["id"] if all_bases else None)
-    docs, stats = [], {}
-    if base_id and bases.get_base(base_id):
-        await run_in_threadpool(_reconcile_documents, base_id)
-        docs = db.list_documents(base_id)          # tout : filtrage live côté client
-        stats = db.count_documents(base_id)
-    overview = _documents_overview(docs)
-    tree = _documents_tree(docs)
-    return _render_with_csrf(request, "documents.html", {
-        "user": user, "title": "Documents", "bases": all_bases, "base_id": base_id,
-        "documents": docs, "stats": stats, "overview": overview, "tree": tree,
-        "q": q, "status": status,
-        "can_manage": auth.has_role(user, auth.ROLE_CONTRIBUTOR),
-    })
-
-
-def _documents_tree(docs: list[dict]) -> dict:
-    """Construit un arbre de dossiers/fichiers à partir des chemins relatifs des
-    documents (« sous-dossier/fichier.pdf »). Chaque nœud porte son total récursif."""
-    root: dict = {"dirs": {}, "files": [], "count": 0}
-    for d in docs:
-        parts = (d.get("filename") or "").split("/")
+def _documents_folders(names: list[str]) -> dict:
+    """Arbre des DOSSIERS uniquement (pas les fichiers) + nombre de fichiers par
+    dossier, pour un navigateur léger. Construit depuis les noms (peu coûteux)."""
+    root: dict = {"dirs": {}, "count": len(names)}
+    for name in names:
         node = root
-        for part in parts[:-1]:
-            node = node["dirs"].setdefault(part, {"dirs": {}, "files": [], "count": 0})
-        node["files"].append(d)
-
-    def _count(n: dict) -> int:
-        total = len(n["files"]) + sum(_count(c) for c in n["dirs"].values())
-        n["count"] = total
-        return total
-
-    _count(root)
+        for part in (name or "").split("/")[:-1]:   # composantes de dossier
+            child = node["dirs"].setdefault(part, {"dirs": {}, "count": 0})
+            child["count"] += 1
+            node = child
     return root
 
 
@@ -592,21 +580,56 @@ def _human_size(n: int) -> str:
     return f"{n} o"
 
 
-def _documents_overview(docs: list[dict]) -> dict:
-    """Agrège les statistiques d'une base : totaux + répartitions (stratégie, statut)."""
-    from collections import Counter
-    by_strategy = Counter((d.get("strategy") or "—") for d in docs)
-    by_status = Counter((d.get("status") or "?") for d in docs)
-    size = sum(d.get("size") or 0 for d in docs)
-    return {
-        "files": len(docs),
-        "chunks": sum(d.get("chunks") or 0 for d in docs),
-        "pages": sum(d.get("pages") or 0 for d in docs),
-        "size": size,
-        "size_h": _human_size(size),
-        "by_strategy": dict(by_strategy),
-        "by_status": dict(by_status),
-    }
+DOCS_PER_PAGE = 100
+
+
+@app.get("/documents")
+async def documents_page(request: Request, base: Optional[str] = None, q: str = "",
+                         status: str = "", folder: str = "", page: int = 1):
+    """Consultation paginée des documents (scalable à des dizaines de milliers)."""
+    user = auth.current_user(request)
+    if not user:
+        return RedirectResponse("/login", status_code=303)
+    if user["must_change_password"]:
+        return RedirectResponse("/change-password", status_code=303)
+    all_bases = bases.load_bases()
+    base_id = base or (all_bases[0]["id"] if all_bases else None)
+    page = max(1, page)
+    folder = folder.strip().strip("/").replace("\\", "/")
+    overview = {"files": 0, "chunks": 0, "pages": 0, "size": 0, "size_h": "0 o",
+                "by_status": {}, "by_strategy": {}}
+    documents: list = []
+    folders: dict = {"dirs": {}, "count": 0}
+    total = 0
+    if base_id and bases.get_base(base_id):
+        ov = await run_in_threadpool(db.document_overview, base_id)
+        overview = {**ov, "size_h": _human_size(ov["size"])}
+        documents, total = await run_in_threadpool(
+            db.list_documents_page, base_id, q or None, status or None, folder or None,
+            (page - 1) * DOCS_PER_PAGE, DOCS_PER_PAGE)
+        folders = await run_in_threadpool(
+            lambda: _documents_folders(db.list_document_names(base_id)))
+    pages_total = max(1, (total + DOCS_PER_PAGE - 1) // DOCS_PER_PAGE)
+    return _render_with_csrf(request, "documents.html", {
+        "user": user, "title": "Documents", "bases": all_bases, "base_id": base_id,
+        "documents": documents, "overview": overview, "folders": folders,
+        "q": q, "status": status, "folder": folder,
+        "page": page, "pages_total": pages_total, "total": total, "per_page": DOCS_PER_PAGE,
+        "can_manage": auth.has_role(user, auth.ROLE_CONTRIBUTOR),
+    })
+
+
+@app.post("/documents/sync")
+async def documents_sync(request: Request, base_id: str = Form(...), csrf_token: str = Form(...)):
+    """Synchronise le registre avec le dossier (fichiers copiés hors application)."""
+    user, resp = _guard(request, auth.ROLE_CONTRIBUTOR)
+    if resp:
+        return resp
+    if _check_csrf(request, csrf_token) and bases.get_base(base_id):
+        n = await run_in_threadpool(_sync_documents, base_id)
+        db.insert_audit("documents_sync", user["id"], user["username"],
+                        client_ip(request), _ua(request), f"base={base_id} ajoutés={n}")
+    return RedirectResponse(f"/documents?base={base_id}", status_code=303)
 
 
 @app.get("/documents/summary")
@@ -700,6 +723,9 @@ async def documents_reanalyze(request: Request, base_id: str = Form(...),
         except ValueError:
             path = None
         if path and path.is_file():
+            busy = _busy_response(base_id)
+            if busy:
+                return busy
             strat = _resolve_strategy(base, strategy)
             # Le contenu va changer : le résumé mis en cache devient caduc.
             db.delete_document_summary(base_id, filename.strip().replace("\\", "/"))
@@ -730,10 +756,75 @@ async def documents_retry_failed(request: Request, base_id: str = Form(...),
             pass
     if not paths:
         return JSONResponse({"error": "aucun document en échec"}, status_code=400)
+    busy = _busy_response(base_id)
+    if busy:
+        return busy
     strat = _resolve_strategy(base, strategy)
     job_id = importer.start(base_id, paths, strat, reindex=True)
     db.insert_audit("retry_failed", user["id"], user["username"],
                     client_ip(request), _ua(request), f"base={base_id} n={len(paths)}")
+    return JSONResponse({"job_id": job_id, "count": len(paths)})
+
+
+@app.post("/documents/index-pending")
+async def documents_index_pending(request: Request, base_id: str = Form(...),
+                                  strategy: str = Form("auto"), csrf_token: str = Form(...)):
+    """Analyse tous les fichiers « en attente » (pending) d'une base."""
+    user, resp = _guard(request, auth.ROLE_CONTRIBUTOR)
+    if resp:
+        return resp
+    base = bases.get_base(base_id)
+    if not (_check_csrf(request, csrf_token) and base):
+        return JSONResponse({"error": "requête invalide"}, status_code=400)
+    paths = []
+    for d in db.list_documents(base_id, status="pending"):
+        try:
+            p = safe_join(settings.DOCUMENTS_DIR, base_id, d["filename"])
+            if p.is_file():
+                paths.append(str(p))
+        except ValueError:
+            pass
+    if not paths:
+        return JSONResponse({"error": "aucun fichier en attente"}, status_code=400)
+    busy = _busy_response(base_id)
+    if busy:
+        return busy
+    strat = _resolve_strategy(base, strategy)
+    job_id = importer.start(base_id, paths, strat)
+    db.insert_audit("index_pending", user["id"], user["username"],
+                    client_ip(request), _ua(request), f"base={base_id} n={len(paths)}")
+    return JSONResponse({"job_id": job_id, "count": len(paths)})
+
+
+@app.post("/documents/index-folder")
+async def documents_index_folder(request: Request, base_id: str = Form(...),
+                                 folder: str = Form(""), reindex: str = Form("0"),
+                                 strategy: str = Form("auto"), csrf_token: str = Form(...)):
+    """(Ré)analyse tous les fichiers d'un sous-dossier. reindex=1 force la ré-analyse."""
+    user, resp = _guard(request, auth.ROLE_CONTRIBUTOR)
+    if resp:
+        return resp
+    base = bases.get_base(base_id)
+    if not (_check_csrf(request, csrf_token) and base):
+        return JSONResponse({"error": "requête invalide"}, status_code=400)
+    rel = folder.strip().strip("/").replace("\\", "/")
+    try:
+        folder_dir = safe_join(settings.DOCUMENTS_DIR, base_id, rel) if rel \
+            else safe_join(settings.DOCUMENTS_DIR, base_id)
+    except ValueError:
+        return JSONResponse({"error": "dossier invalide"}, status_code=400)
+    if not folder_dir.is_dir():
+        return JSONResponse({"error": "dossier introuvable"}, status_code=404)
+    paths = [str(p) for p in sorted(folder_dir.rglob("*")) if p.is_file()]
+    if not paths:
+        return JSONResponse({"error": "dossier vide"}, status_code=400)
+    busy = _busy_response(base_id)
+    if busy:
+        return busy
+    strat = _resolve_strategy(base, strategy)
+    job_id = importer.start(base_id, paths, strat, reindex=(reindex == "1"))
+    db.insert_audit("index_folder", user["id"], user["username"], client_ip(request),
+                    _ua(request), f"base={base_id} dossier={rel or '/'} reindex={reindex} n={len(paths)}")
     return JSONResponse({"job_id": job_id, "count": len(paths)})
 
 
@@ -1026,6 +1117,15 @@ def _resolve_strategy(base: dict, requested: str) -> str:
     return requested if requested in ("fast", "ocr_only") else base.get("parse_strategy", "fast")
 
 
+def _busy_response(base_id: str):
+    """Si un import tourne déjà pour cette base, renvoie une réponse JSON pointant
+    vers ce job (empêche un second import) ; sinon None."""
+    active = importer.active_job_for_base(base_id)
+    if active:
+        return JSONResponse({"job_id": active["id"], "busy": True})
+    return None
+
+
 @app.post("/contribute/upload")
 async def contribute_upload(request: Request, base_id: str = Form(...),
                             csrf_token: str = Form(...), strategy: str = Form("auto"),
@@ -1053,6 +1153,11 @@ async def contribute_upload(request: Request, base_id: str = Form(...),
     if not saved:
         return JSONResponse({"error": "aucun fichier"}, status_code=400)
 
+    # Fichiers enregistrés sur disque ; si un import tourne déjà, on n'en démarre pas
+    # un second (ils seront pris par « Analyser les fichiers en attente » ensuite).
+    busy = _busy_response(base_id)
+    if busy:
+        return busy
     strat = _resolve_strategy(base, strategy)
     job_id = importer.start(base_id, saved, strat)
     db.insert_audit("document_upload", user["id"], user["username"],
@@ -1080,6 +1185,9 @@ async def contribute_scan(request: Request, base_id: str = Form(...),
     if not paths:
         return JSONResponse({"error": "dossier vide"}, status_code=400)
 
+    busy = _busy_response(base_id)
+    if busy:
+        return busy
     strat = _resolve_strategy(base, strategy)
     job_id = importer.start(base_id, paths, strat)
     db.insert_audit("folder_scan", user["id"], user["username"],
@@ -1123,6 +1231,16 @@ async def contribute_job_stop(request: Request, job_id: str, csrf_token: str = F
         db.insert_audit("import_stop", user["id"], user["username"],
                         client_ip(request), _ua(request), f"job={job_id}")
     return JSONResponse({"stopping": ok})
+
+
+@app.get("/contribute/jobs/active")
+async def contribute_job_active(request: Request, base: Optional[str] = None):
+    """Renvoie le job d'import en cours (pour réafficher l'encart au retour sur la
+    page). base facultatif : sinon, premier job en cours toutes bases confondues."""
+    if not auth.current_user(request):
+        return JSONResponse({"error": "non authentifié"}, status_code=401)
+    job = importer.active_job_for_base(base)
+    return JSONResponse({"job": job})
 
 
 # --------------------------------------------------------------------------

@@ -40,6 +40,17 @@ def get_job(job_id: str) -> Optional[dict[str, Any]]:
         return dict(j) if j else None
 
 
+def active_job_for_base(base_id: Optional[str] = None) -> Optional[dict[str, Any]]:
+    """Renvoie le job en cours (status 'running') pour la base donnée, ou le premier
+    job en cours toutes bases confondues si base_id est None. Sert à réafficher
+    l'encart au retour sur la page et à empêcher un double import."""
+    with _lock:
+        for j in _jobs.values():
+            if j.get("status") == "running" and (base_id is None or j.get("base_id") == base_id):
+                return dict(j)
+    return None
+
+
 def record_result(base_id: str, filename: str, rep: dict[str, Any],
                   strategy: str, size: int) -> str:
     """Met à jour le registre des documents selon le résultat d'ingestion.
