@@ -44,22 +44,25 @@
           </td>
           <td>
             <div class="user-actions">
-              {% if u.status != 'active' %}
-              <form method="post" action="/admin/users/action">
-                <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
-                <input type="hidden" name="user_id" value="{{ u.id }}">
-                <input type="hidden" name="action" value="activate">
-                <button class="btn-mini" type="submit">Activer</button>
-              </form>
-              {% endif %}
-              {% if u.status != 'suspended' %}
-              <form method="post" action="/admin/users/action">
-                <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
-                <input type="hidden" name="user_id" value="{{ u.id }}">
-                <input type="hidden" name="action" value="suspend">
-                <button class="btn-mini danger" type="submit">Suspendre</button>
-              </form>
-              {% endif %}
+              <span class="ua-status">
+                {% if u.status != 'active' %}
+                <form method="post" action="/admin/users/action">
+                  <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+                  <input type="hidden" name="user_id" value="{{ u.id }}">
+                  <input type="hidden" name="action" value="activate">
+                  <button class="btn-mini" type="submit">Activer</button>
+                </form>
+                {% endif %}
+                {% if u.status != 'suspended' %}
+                <form method="post" action="/admin/users/action">
+                  <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+                  <input type="hidden" name="user_id" value="{{ u.id }}">
+                  <input type="hidden" name="action" value="suspend">
+                  <button class="btn-mini danger" type="submit">Suspendre</button>
+                </form>
+                {% endif %}
+              </span>
+
               <form method="post" action="/admin/users/action" class="role-form">
                 <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
                 <input type="hidden" name="user_id" value="{{ u.id }}">
@@ -85,15 +88,17 @@
                 </form>
               </details>
 
-              {% if u.status == 'suspended' %}
-              <form method="post" action="/admin/users/action"
-                    data-confirm="Supprimer définitivement le compte « {{ u.username }} » et toutes ses données (conversations, sessions) ? Cette action est irréversible.">
-                <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
-                <input type="hidden" name="user_id" value="{{ u.id }}">
-                <input type="hidden" name="action" value="delete">
-                <button class="btn-mini danger" type="submit">Supprimer</button>
-              </form>
-              {% endif %}
+              <span class="ua-del">
+                {% if u.status == 'suspended' %}
+                <form method="post" action="/admin/users/action"
+                      data-confirm="Supprimer définitivement le compte « {{ u.username }} » et toutes ses données (conversations, sessions) ? Cette action est irréversible.">
+                  <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+                  <input type="hidden" name="user_id" value="{{ u.id }}">
+                  <input type="hidden" name="action" value="delete">
+                  <button class="btn-mini danger" type="submit">Supprimer</button>
+                </form>
+                {% endif %}
+              </span>
             </div>
           </td>
         </tr>

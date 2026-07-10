@@ -136,6 +136,29 @@ def set_index_workers(n: Any) -> int:
     return n
 
 
+# --- Serveur Ollama (URL configurable : Ollama interne ou serveur LAN distant) ---
+from core.config import settings as _settings  # noqa: E402
+
+_OLLAMA_KEY = "ollama_url"
+
+
+def get_ollama_url() -> str:
+    """URL Ollama effective : réglage admin s'il est défini, sinon le défaut
+    d'environnement (Ollama interne du conteneur)."""
+    url = db.get_setting(_OLLAMA_KEY)
+    return url.strip().rstrip("/") if url and url.strip() else _settings.OLLAMA_URL
+
+
+def set_ollama_url(url: Optional[str]) -> str:
+    """Enregistre l'URL Ollama. Vide -> revient au défaut interne. Tolère une simple
+    « IP:port » (préfixe http:// ajouté). Renvoie l'URL effective."""
+    url = (url or "").strip().rstrip("/")
+    if url and not url.startswith(("http://", "https://")):
+        url = "http://" + url
+    db.set_setting(_OLLAMA_KEY, url)
+    return get_ollama_url()
+
+
 def effective_dict(user_id: int) -> dict[str, Any]:
     """Valeurs effectives pour initialiser le panneau (globaux < surcharges utilisateur)."""
     p = build_params(load_user_overrides(user_id))

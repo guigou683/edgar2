@@ -103,7 +103,6 @@ a:hover { color: var(--or); }
 .pw-mark { width: 14px; display: inline-block; text-align: center; }
 
 /* --- Page « Mon compte » --- */
-.account-card { max-width: 560px; }
 .account-card h2 { margin: 0 0 12px; font-size: 16px; }
 .account-card form { display: flex; flex-direction: column; gap: 12px; }
 .account-card label { display: flex; flex-direction: column; gap: 6px; font-size: 13px; color: var(--text-muted); }
@@ -276,7 +275,7 @@ a.btn-new { display: block; text-align: center; text-decoration: none; }
 .admin-table th, .admin-table td { text-align: left; padding: 8px 10px; border-bottom: 1px solid var(--border); }
 .admin-table th { color: var(--text-muted); font-weight: 600; font-size: 12px; text-transform: uppercase; }
 .admin-table tr:hover td { background: var(--bg-elev); }
-.admin-card { background: var(--bg-elev); border: 1px solid var(--border); border-radius: 12px; padding: 20px; margin-bottom: 18px; max-width: 720px; }
+.admin-card { background: var(--bg-elev); border: 1px solid var(--border); border-radius: 12px; padding: 20px; margin-bottom: 18px; max-width: 100%; }
 .admin-card h2 { margin: 0 0 14px; font-size: 16px; }
 .admin-form { display: flex; flex-direction: column; gap: 12px; max-width: 520px; }
 .admin-form label { display: flex; flex-direction: column; gap: 5px; font-size: 13px; color: var(--text-muted); }
@@ -330,19 +329,25 @@ a.btn-mini { text-decoration: none; display: inline-block; }
   z-index: 40; white-space: normal; box-shadow: 0 4px 14px rgba(0,0,0,.45);
 }
 
-/* --- Comptes / Documents : actions alignées sur une ligne --- */
-.user-actions { display: flex; flex-direction: row; flex-wrap: wrap; gap: 8px; align-items: center; }
-.user-actions form { margin: 0; display: inline-flex; align-items: center; gap: 6px; }
-.role-form { display: inline-flex; gap: 6px; align-items: center; }
-.role-form select { background: var(--bg); color: var(--text); border: 1px solid var(--border); border-radius: 6px; padding: 5px 8px; font-size: 12px; }
-.user-edit > summary { list-style: none; cursor: pointer; display: inline-block; }
+/* --- Comptes : actions alignées en colonnes fixes (grille) --- */
+.user-actions { display: grid; grid-template-columns: 104px 184px 100px 104px; gap: 10px; align-items: start; }
+.ua-status { display: flex; flex-direction: column; gap: 6px; }
+.ua-status form, .ua-del form { margin: 0; }
+.ua-status .btn-mini, .ua-del .btn-mini { width: 100%; }
+.user-actions .role-form { display: flex; gap: 6px; align-items: center; margin: 0; }
+.user-actions .role-form select { flex: 1; min-width: 0; background: var(--bg); color: var(--text);
+  border: 1px solid var(--border); border-radius: 6px; padding: 5px 8px; font-size: 12px; }
+.user-edit { position: relative; }
+.user-edit > summary { list-style: none; cursor: pointer; width: 100%; text-align: center; box-sizing: border-box; }
 .user-edit > summary::-webkit-details-marker { display: none; }
-.user-actions .user-edit-form { display: flex; flex-direction: column; align-items: stretch; gap: 8px;
-  margin-top: 8px; padding: 10px; background: var(--bg); border: 1px solid var(--border);
-  border-radius: 8px; min-width: 250px; }
+.user-actions .user-edit-form { position: absolute; top: calc(100% + 4px); left: 0; z-index: 20;
+  display: flex; flex-direction: column; align-items: stretch; gap: 8px; padding: 12px;
+  background: var(--bg); border: 1px solid var(--border); border-radius: 10px;
+  box-shadow: 0 6px 20px rgba(0,0,0,.45); min-width: 260px; }
 .user-edit-form label { display: flex; flex-direction: column; gap: 4px; font-size: 12px; color: var(--text-muted); }
 .user-edit-form input { background: var(--bg-elev); color: var(--text); border: 1px solid var(--border);
   border-radius: 6px; padding: 6px 8px; font-size: 13px; }
+@media (max-width: 1200px) { .user-actions { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
 
 /* --- Indicateur « Réflexion en cours » --- */
 .thinking-text { color: var(--text-muted); font-style: italic; }

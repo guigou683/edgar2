@@ -871,7 +871,7 @@ async def admin_dashboard(request: Request):
     user, resp = _guard(request, auth.ROLE_ADMIN)
     if resp:
         return resp
-    ollama = await _ping(settings.OLLAMA_URL, "/api/tags")
+    ollama = await _ping(appsettings.get_ollama_url(), "/api/tags")
     qdrant = await _ping(settings.QDRANT_URL, "/healthz")
     runtime = await _ollama_runtime()
     base_stats = []
@@ -1063,6 +1063,9 @@ async def admin_models(request: Request):
         "defaults": appsettings.load_defaults(),
         "index_workers": appsettings.get_index_workers(),
         "index_workers_max": appsettings.INDEX_WORKERS_MAX,
+        "ollama_url": db.get_setting("ollama_url") or "",
+        "ollama_url_effective": appsettings.get_ollama_url(),
+        "ollama_url_default": settings.OLLAMA_URL,
     })
 
 
@@ -1086,6 +1089,8 @@ async def admin_models_save(request: Request):
         appsettings.save_defaults(overrides)
         if form.get("index_workers") is not None:
             appsettings.set_index_workers(form.get("index_workers"))
+        if form.get("ollama_url") is not None:
+            appsettings.set_ollama_url(form.get("ollama_url"))
         db.insert_audit("settings_update", user["id"], user["username"],
                         client_ip(request), _ua(request), "")
     return RedirectResponse("/admin/models", status_code=303)
@@ -1270,7 +1275,7 @@ async def _installed_models() -> list[str]:
     """Liste des modèles Ollama installés."""
     try:
         async with httpx.AsyncClient(timeout=5.0) as client:
-            r = await client.get(f"{settings.OLLAMA_URL}/api/tags")
+            r = await client.get(f"{appsettings.get_ollama_url()}/api/tags")
         return [m["name"] for m in r.json().get("models", [])]
     except Exception:
         return []
@@ -1290,7 +1295,7 @@ async def _ollama_runtime() -> dict:
     """État d'exécution Ollama : modèles chargés, GPU/CPU, VRAM allouée (/api/ps)."""
     try:
         async with httpx.AsyncClient(timeout=5.0) as client:
-            r = await client.get(f"{settings.OLLAMA_URL}/api/ps")
+            r = await client.get(f"{appsettings.get_ollama_url()}/api/ps")
         out = []
         for m in r.json().get("models", []):
             size = int(m.get("size", 0) or 0)
@@ -1314,7 +1319,7 @@ async def _ping(url: str, path: str) -> dict:
 
 @app.get("/healthz")
 async def healthz():
-    ollama = await _ping(settings.OLLAMA_URL, "/api/tags")
+    ollama = await _ping(appsettings.get_ollama_url(), "/api/tags")
     qdrant = await _ping(settings.QDRANT_URL, "/healthz")
     healthy = ollama["ok"] and qdrant["ok"]
     return JSONResponse(

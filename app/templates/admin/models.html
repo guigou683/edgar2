@@ -53,6 +53,15 @@
          Plus élevé = plus rapide sur les PDF scannés, mais plus gourmand en RAM.
          Sur une machine à 8 Go, rester à 2. « 1 » = séquentiel.</p>
 
+      <label>Serveur Ollama (URL ou IP:port)
+        <input type="text" name="ollama_url" value="{{ ollama_url }}"
+               placeholder="{{ ollama_url_default }}" autocomplete="off"></label>
+      <p class="help">Laisser <b>vide</b> pour l'Ollama interne du conteneur ({{ ollama_url_default }}).
+         Pour un Ollama distant sur le réseau local, saisir p.ex. <code>192.168.1.50:11434</code>
+         (le préfixe <code>http://</code> est ajouté automatiquement). Effectif immédiatement.
+         <br>En cours : <b>{{ ollama_url_effective }}</b> — {{ installed | length }} modèle(s) détecté(s).
+         Le serveur distant doit contenir les mêmes modèles (bge-m3 pour les embeddings, le LLM de génération).</p>
+
       <div><button class="btn-mini" type="submit">Enregistrer les défauts</button></div>
     </form>
   </div>

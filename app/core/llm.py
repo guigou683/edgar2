@@ -20,6 +20,19 @@ EMBED_TIMEOUT = 300.0  # marge pour un rechargement de modèle (bascule VRAM)
 EMBED_RETRIES = 2      # reprises sur timeout/erreur réseau transitoire
 
 
+def _ollama_url() -> str:
+    """URL Ollama effective : réglage admin (table settings) s'il est défini, sinon
+    le défaut d'environnement. Import paresseux de db pour éviter un cycle."""
+    try:
+        from core import db
+        url = db.get_setting("ollama_url")
+        if url and url.strip():
+            return url.strip().rstrip("/")
+    except Exception:
+        pass
+    return settings.OLLAMA_URL
+
+
 def embed_texts(texts: list[str], model: str | None = None, progress=None) -> list[list[float]]:
     """Calcule les embeddings denses d'une liste de textes, par lots de 32.
 
@@ -30,6 +43,7 @@ def embed_texts(texts: list[str], model: str | None = None, progress=None) -> li
     est appelé après chaque lot (suivi intra-fichier)."""
     model = model or settings.EMBED_MODEL
     total = len(texts)
+    url = _ollama_url()
     out: list[list[float]] = []
     with httpx.Client(timeout=EMBED_TIMEOUT) as client:
         for i in range(0, total, EMBED_BATCH):
@@ -37,7 +51,7 @@ def embed_texts(texts: list[str], model: str | None = None, progress=None) -> li
             last_exc: Exception | None = None
             for attempt in range(EMBED_RETRIES + 1):
                 try:
-                    r = client.post(f"{settings.OLLAMA_URL}/api/embed",
+                    r = client.post(f"{url}/api/embed",
                                     json={"model": model, "input": batch})
                     r.raise_for_status()
                     out.extend(r.json()["embeddings"])
@@ -67,7 +81,7 @@ def model_loaded(model: str | None = None) -> bool:
     model = model or settings.LLM_MODEL
     try:
         with httpx.Client(timeout=5.0) as client:
-            r = client.get(f"{settings.OLLAMA_URL}/api/ps")
+            r = client.get(f"{_ollama_url()}/api/ps")
             r.raise_for_status()
             names = [m.get("name", "") for m in r.json().get("models", [])]
             return any(n == model or n.startswith(model) for n in names)
@@ -80,7 +94,7 @@ def preload(model: str | None = None) -> None:
     fois le modèle prêt. Utilisé pour matérialiser l'étape « Chargement du modèle »."""
     model = model or settings.LLM_MODEL
     with httpx.Client(timeout=180.0) as client:
-        r = client.post(f"{settings.OLLAMA_URL}/api/generate", json={"model": model})
+        r = client.post(f"{_ollama_url()}/api/generate", json={"model": model})
         r.raise_for_status()
 
 
@@ -137,7 +151,7 @@ def generate(prompt: str, system: str | None = None, model: str | None = None,
     if system:
         payload["system"] = system
     with httpx.Client(timeout=120.0) as client:
-        r = client.post(f"{settings.OLLAMA_URL}/api/generate", json=payload)
+        r = client.post(f"{_ollama_url()}/api/generate", json=payload)
         r.raise_for_status()
         return r.json().get("response", "")
 
@@ -151,7 +165,7 @@ def generate_stream(prompt: str, system: str | None = None, model: str | None = 
     if system:
         payload["system"] = system
     with httpx.Client(timeout=300.0) as client:
-        with client.stream("POST", f"{settings.OLLAMA_URL}/api/generate", json=payload) as r:
+        with client.stream("POST", f"{_ollama_url()}/api/generate", json=payload) as r:
             r.raise_for_status()
             for line in r.iter_lines():
                 if not line:
