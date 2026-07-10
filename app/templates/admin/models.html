@@ -17,6 +17,20 @@
   </div>
 
   <div class="admin-card">
+    <h2>Ressources machine &amp; profil recommandé</h2>
+    <p class="help">Détecté : <b>{{ res.cpu_cores }}</b> cœur(s) CPU · RAM <b>{{ res.ram_total_gb }} Go</b>
+      ({{ res.ram_available_gb }} Go disponibles){% if res.vram_gb %} · VRAM <b>{{ res.vram_gb }} Go</b>{% endif %}.</p>
+    <p class="help">Recommandation : parallélisme d'indexation <b>{{ rec.index_workers }}</b> worker(s)
+      (actuel : {{ index_workers }}). {{ rec.model_advice }}</p>
+    <form class="inline-form" method="post" action="/admin/resources/apply">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+      <button class="btn-mini" type="submit">Appliquer le profil recommandé</button>
+    </form>
+    <p class="help">La VRAM n'est pas détectable automatiquement (l'app n'a pas accès au GPU).
+      Renseignez-la dans les réglages ci-dessous pour affiner le conseil de modèle.</p>
+  </div>
+
+  <div class="admin-card">
     <h2>Réglages de recherche par défaut (globaux)</h2>
     <p class="help">Ces valeurs s'appliquent à toutes les requêtes, sauf surcharge par session.</p>
     <form class="admin-form" method="post" action="/admin/models/save">
@@ -52,6 +66,10 @@
       <p class="help">Nombre de cœurs utilisés pour l'OCR des pages lors de l'import.
          Plus élevé = plus rapide sur les PDF scannés, mais plus gourmand en RAM.
          Sur une machine à 8 Go, rester à 2. « 1 » = séquentiel.</p>
+
+      <label>VRAM du GPU (Go, saisie manuelle)
+        <input type="text" name="gpu_vram" value="{{ gpu_vram }}" placeholder="ex. 6" autocomplete="off"></label>
+      <p class="help">Sert au conseil de modèle (carte « Ressources » ci-dessus). Laisser vide si pas de GPU.</p>
 
       <label>Serveur Ollama (URL ou IP:port)
         <input type="text" name="ollama_url" value="{{ ollama_url }}"

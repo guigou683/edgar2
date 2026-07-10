@@ -28,7 +28,8 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from starlette.concurrency import run_in_threadpool
 
-from core import appsettings, auth, bases, db, importer, ingest, llm, rag, retrieval, vectorstore
+from core import (appsettings, auth, bases, db, importer, ingest, llm, rag,
+                  resources, retrieval, vectorstore)
 from core.config import settings
 from core.security import (
     CSP_POLICY,
@@ -1056,6 +1057,8 @@ async def admin_models(request: Request):
     user, resp = _guard(request, auth.ROLE_ADMIN)
     if resp:
         return resp
+    res = resources.detect()
+    rec = resources.recommend(res)
     return _render_with_csrf(request, "admin/models.html", {
         "user": user, "title": "Modèles & recherche",
         "installed": await _installed_models(),
@@ -1066,6 +1069,7 @@ async def admin_models(request: Request):
         "ollama_url": db.get_setting("ollama_url") or "",
         "ollama_url_effective": appsettings.get_ollama_url(),
         "ollama_url_default": settings.OLLAMA_URL,
+        "res": res, "rec": rec, "gpu_vram": appsettings.get_gpu_vram(),
     })
 
 
@@ -1091,8 +1095,24 @@ async def admin_models_save(request: Request):
             appsettings.set_index_workers(form.get("index_workers"))
         if form.get("ollama_url") is not None:
             appsettings.set_ollama_url(form.get("ollama_url"))
+        if form.get("gpu_vram") is not None:
+            appsettings.set_gpu_vram(form.get("gpu_vram"))
         db.insert_audit("settings_update", user["id"], user["username"],
                         client_ip(request), _ua(request), "")
+    return RedirectResponse("/admin/models", status_code=303)
+
+
+@app.post("/admin/resources/apply")
+async def admin_resources_apply(request: Request, csrf_token: str = Form(...)):
+    """Applique le profil recommandé (règle le parallélisme d'indexation)."""
+    user, resp = _guard(request, auth.ROLE_ADMIN)
+    if resp:
+        return resp
+    if _check_csrf(request, csrf_token):
+        rec = resources.recommend(resources.detect())
+        n = appsettings.set_index_workers(rec["index_workers"])
+        db.insert_audit("resources_apply", user["id"], user["username"],
+                        client_ip(request), _ua(request), f"index_workers={n}")
     return RedirectResponse("/admin/models", status_code=303)
 
 

@@ -159,6 +159,25 @@ def set_ollama_url(url: Optional[str]) -> str:
     return get_ollama_url()
 
 
+# --- VRAM du GPU (saisie admin, base des conseils de profil) ---
+_VRAM_KEY = "gpu_vram_gb"
+
+
+def get_gpu_vram() -> str:
+    return db.get_setting(_VRAM_KEY) or ""
+
+
+def set_gpu_vram(value: Any) -> str:
+    """Enregistre la VRAM en Go (>0). Vide/invalide -> effacée."""
+    raw = str(value or "").strip().replace(",", ".")
+    try:
+        v = float(raw)
+        db.set_setting(_VRAM_KEY, (str(v) if v > 0 else ""))
+    except (ValueError, TypeError):
+        db.set_setting(_VRAM_KEY, "")
+    return get_gpu_vram()
+
+
 def effective_dict(user_id: int) -> dict[str, Any]:
     """Valeurs effectives pour initialiser le panneau (globaux < surcharges utilisateur)."""
     p = build_params(load_user_overrides(user_id))
