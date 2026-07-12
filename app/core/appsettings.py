@@ -163,6 +163,19 @@ def set_ollama_url(url: Optional[str]) -> str:
 _VRAM_KEY = "gpu_vram_gb"
 
 
+def get_concurrency_policy() -> str:
+    from core.coordinator import POLICIES, POLICY_PRIORITY
+    p = db.get_setting("concurrency_policy")
+    return p if p in POLICIES else POLICY_PRIORITY
+
+
+def set_concurrency_policy(value: Any) -> str:
+    from core.coordinator import POLICIES, POLICY_PRIORITY
+    v = str(value or "").strip()
+    db.set_setting("concurrency_policy", v if v in POLICIES else POLICY_PRIORITY)
+    return get_concurrency_policy()
+
+
 def get_gpu_vram() -> str:
     return db.get_setting(_VRAM_KEY) or ""
 

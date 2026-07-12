@@ -71,6 +71,15 @@
         <input type="text" name="gpu_vram" value="{{ gpu_vram }}" placeholder="ex. 6" autocomplete="off"></label>
       <p class="help">Sert au conseil de modèle (carte « Ressources » ci-dessus). Laisser vide si pas de GPU.</p>
 
+      <label>Concurrence question ↔ indexation
+        <select name="concurrency_policy">
+          <option value="priority" {% if concurrency_policy == 'priority' %}selected{% endif %}>Priorité aux requêtes (l'indexation se met en pause)</option>
+          <option value="parallel" {% if concurrency_policy == 'parallel' %}selected{% endif %}>Parallèle (les deux en même temps)</option>
+        </select></label>
+      <p class="help">« Priorité » : pendant qu'un utilisateur pose une question, l'indexation marque
+         une courte pause (recommandé sur GPU à faible VRAM). « Parallèle » : aucune pause — à réserver
+         aux machines puissantes ou à un serveur Ollama distant.</p>
+
       <label>Serveur Ollama (URL ou IP:port)
         <input type="text" name="ollama_url" value="{{ ollama_url }}"
                placeholder="{{ ollama_url_default }}" autocomplete="off"></label>

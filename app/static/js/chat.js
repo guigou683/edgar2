@@ -365,6 +365,7 @@ document.addEventListener("DOMContentLoaded", () => {
     } else if (job.current) {
       cur = "En cours : " + job.current.split("/").pop();
     }
+    if (!done && job.paused) cur += "  ⏸ en pause (requête en cours)";
     q("[data-job-current]").textContent = cur;
     const stopBtn = q("[data-job-stop]");
     if (stopBtn) {

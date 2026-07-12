@@ -15,7 +15,7 @@ from concurrent.futures import ProcessPoolExecutor, ThreadPoolExecutor
 from pathlib import Path
 from typing import Any, Optional
 
-from core import appsettings, db, ingest, vectorstore
+from core import appsettings, coordinator, db, ingest, vectorstore
 from core.config import settings
 
 _jobs: dict[str, dict[str, Any]] = {}
@@ -117,6 +117,17 @@ def _worker(job_id: str, base_id: str, paths: list[Path], strategy: str,
         except Exception:
             yake_pool = None
 
+    def gate() -> None:
+        """Avant chaque lot d'embeddings : cède le pas aux requêtes (mode priority)."""
+        if coordinator.query_active() and coordinator.policy() == coordinator.POLICY_PRIORITY:
+            with _lock:
+                if job_id in _jobs:
+                    _jobs[job_id]["paused"] = True
+            coordinator.gate()
+            with _lock:
+                if job_id in _jobs:
+                    _jobs[job_id]["paused"] = False
+
     _last = [0.0]
 
     def make_report(doc_id: str):
@@ -176,7 +187,8 @@ def _worker(job_id: str, base_id: str, paths: list[Path], strategy: str,
                 try:
                     rep = ingest.embed_and_upsert(
                         base_id, pf["doc_hash"], pf["chunks"], pf["prep"],
-                        delete_file=doc_id if reindex else None, progress=make_report(doc_id))
+                        delete_file=doc_id if reindex else None,
+                        progress=make_report(doc_id), before_batch=gate)
                 except Exception as exc:
                     rep = {"indexed": 0, "skipped": False,
                            "reason": f"{type(exc).__name__}: {exc}"[:400]}
@@ -200,7 +212,8 @@ def start(base_id: str, paths: list[str], strategy: str, reindex: bool = False) 
         _jobs[job_id] = {
             "id": job_id, "base_id": base_id, "total": len(files), "done": 0,
             "succeeded": 0, "skipped": 0, "failed": 0, "current": "", "bytes": 0,
-            "failures": [], "status": "running", "started": time.time(), "stop": False, "sub": None,
+            "failures": [], "status": "running", "started": time.time(), "stop": False,
+            "sub": None, "paused": False,
         }
     threading.Thread(target=_worker, args=(job_id, base_id, files, strategy, reindex),
                      daemon=True).start()

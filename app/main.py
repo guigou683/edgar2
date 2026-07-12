@@ -28,8 +28,8 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from starlette.concurrency import run_in_threadpool
 
-from core import (appsettings, auth, bases, db, importer, ingest, llm, rag,
-                  resources, retrieval, vectorstore)
+from core import (appsettings, auth, bases, coordinator, db, importer, ingest, llm,
+                  rag, resources, retrieval, vectorstore)
 from core.config import settings
 from core.security import (
     CSP_POLICY,
@@ -206,7 +206,7 @@ async def chat_stream(request: Request):
     # Le pipeline (lourd) s'exécute dans le générateur sync -> itéré en threadpool
     # par Starlette : la boucle asynchrone n'est pas bloquée. Chaque étape est
     # diffusée en direct (affichage type « recherche »), puis la génération.
-    def event_stream():
+    def _pipeline():
         gen_model = params.llm_model
         model_warm = False
         # Modèle froid + re-prompt : le 1er usage LLM (reformulation) chargerait le
@@ -270,6 +270,14 @@ async def chat_stream(request: Request):
         )
         db.touch_conversation(conv_id)
         yield _sse("done", {"message_id": mid, "conversation_id": conv_id})
+
+    def event_stream():
+        # Priorité aux requêtes : signale l'activité pour que l'indexation cède le pas.
+        coordinator.query_begin()
+        try:
+            yield from _pipeline()
+        finally:
+            coordinator.query_end()
 
     return StreamingResponse(event_stream(), media_type="text/event-stream",
                              headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"})
@@ -689,6 +697,7 @@ async def document_summary(request: Request, base: str, file: str, force: int = 
         _, truncated = rag.build_summary_prompt(name, payloads)
         yield _sse("meta", {"chunks": len(payloads), "truncated": truncated, "cached": False})
         parts = []
+        coordinator.query_begin()      # priorité requête : l'indexation cède le pas
         try:
             for tok in rag.summarize_stream(name, payloads):
                 parts.append(tok)
@@ -697,6 +706,8 @@ async def document_summary(request: Request, base: str, file: str, force: int = 
             yield _sse("error", {"message": f"Erreur de génération ({type(exc).__name__})."})
             yield _sse("done", {})
             return
+        finally:
+            coordinator.query_end()
         summary = "".join(parts).strip()
         if summary:  # enregistrement pour réutilisation (évite de recalculer)
             db.save_document_summary(base, name, summary, settings.LLM_MODEL,
@@ -1070,6 +1081,7 @@ async def admin_models(request: Request):
         "ollama_url_effective": appsettings.get_ollama_url(),
         "ollama_url_default": settings.OLLAMA_URL,
         "res": res, "rec": rec, "gpu_vram": appsettings.get_gpu_vram(),
+        "concurrency_policy": appsettings.get_concurrency_policy(),
     })
 
 
@@ -1097,6 +1109,8 @@ async def admin_models_save(request: Request):
             appsettings.set_ollama_url(form.get("ollama_url"))
         if form.get("gpu_vram") is not None:
             appsettings.set_gpu_vram(form.get("gpu_vram"))
+        if form.get("concurrency_policy") is not None:
+            appsettings.set_concurrency_policy(form.get("concurrency_policy"))
         db.insert_audit("settings_update", user["id"], user["username"],
                         client_ip(request), _ua(request), "")
     return RedirectResponse("/admin/models", status_code=303)

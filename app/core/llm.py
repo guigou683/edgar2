@@ -33,7 +33,8 @@ def _ollama_url() -> str:
     return settings.OLLAMA_URL
 
 
-def embed_texts(texts: list[str], model: str | None = None, progress=None) -> list[list[float]]:
+def embed_texts(texts: list[str], model: str | None = None, progress=None,
+                before_batch=None) -> list[list[float]]:
     """Calcule les embeddings denses d'une liste de textes, par lots de 32.
 
     Utilise l'endpoint /api/embed d'Ollama (entrée par lot). Renvoie une liste
@@ -47,6 +48,8 @@ def embed_texts(texts: list[str], model: str | None = None, progress=None) -> li
     out: list[list[float]] = []
     with httpx.Client(timeout=EMBED_TIMEOUT) as client:
         for i in range(0, total, EMBED_BATCH):
+            if before_batch:
+                before_batch()          # cède le pas aux requêtes (indexation)
             batch = texts[i:i + EMBED_BATCH]
             last_exc: Exception | None = None
             for attempt in range(EMBED_RETRIES + 1):

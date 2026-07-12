@@ -98,14 +98,16 @@ def prepare_document(base_id: str, doc_hash: str, chunks: list[Chunk],
 
 def embed_and_upsert(base_id: str, doc_hash: str, chunks: list[Chunk],
                      prep: dict[str, Any], delete_file: Optional[str] = None,
-                     progress=None) -> dict[str, Any]:
+                     progress=None, before_batch=None) -> dict[str, Any]:
     """Phase GPU : embeddings denses (Ollama) + construction des points + upsert Qdrant.
 
-    `delete_file` (ré-analyse) purge les anciens points juste avant l'upsert."""
+    `delete_file` (ré-analyse) purge les anciens points juste avant l'upsert.
+    `before_batch` (coordination) est appelé avant chaque lot d'embeddings."""
     keyword_lists, enriched, sparse_vecs = (
         prep["keyword_lists"], prep["enriched"], prep["sparse_vecs"])
     emb_progress = (lambda d, t: progress("index", d, t)) if progress else None
-    dense_vecs = llm.embed_texts(enriched, progress=emb_progress)  # seul appel GPU
+    dense_vecs = llm.embed_texts(enriched, progress=emb_progress,
+                                 before_batch=before_batch)  # seul appel GPU
     points = []
     for i, (c, kws, dvec, (sidx, sval)) in enumerate(
             zip(chunks, keyword_lists, dense_vecs, sparse_vecs)):
