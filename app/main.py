@@ -1102,6 +1102,27 @@ async def admin_models_save(request: Request):
     return RedirectResponse("/admin/models", status_code=303)
 
 
+@app.post("/admin/models/unload")
+async def admin_models_unload(request: Request, model: str = Form(""),
+                              csrf_token: str = Form(...)):
+    """Décharge les modèles de la mémoire (VRAM/RAM). `model` vide = tous."""
+    user, resp = _guard(request, auth.ROLE_ADMIN)
+    if resp:
+        return resp
+    if _check_csrf(request, csrf_token):
+        if model.strip():
+            try:
+                await run_in_threadpool(llm.unload, model.strip())
+                done = [model.strip()]
+            except Exception:
+                done = []
+        else:
+            done = await run_in_threadpool(llm.unload_all)
+        db.insert_audit("models_unload", user["id"], user["username"], client_ip(request),
+                        _ua(request), f"déchargés={','.join(done) or '(aucun)'}")
+    return RedirectResponse("/admin", status_code=303)
+
+
 @app.post("/admin/resources/apply")
 async def admin_resources_apply(request: Request, csrf_token: str = Form(...)):
     """Applique le profil recommandé (règle le parallélisme d'indexation)."""

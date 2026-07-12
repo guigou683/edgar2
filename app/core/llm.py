@@ -98,6 +98,38 @@ def preload(model: str | None = None) -> None:
         r.raise_for_status()
 
 
+def unload(model: str) -> None:
+    """Décharge un modèle de la mémoire (VRAM/RAM) : requête keep_alive=0 à Ollama."""
+    with httpx.Client(timeout=30.0) as client:
+        r = client.post(f"{_ollama_url()}/api/generate",
+                        json={"model": model, "keep_alive": 0})
+        r.raise_for_status()
+
+
+def loaded_models() -> list[str]:
+    """Noms des modèles actuellement chargés en mémoire (/api/ps)."""
+    try:
+        with httpx.Client(timeout=5.0) as client:
+            r = client.get(f"{_ollama_url()}/api/ps")
+            r.raise_for_status()
+            return [m.get("name", "") for m in r.json().get("models", []) if m.get("name")]
+    except Exception:
+        return []
+
+
+def unload_all() -> list[str]:
+    """Décharge tous les modèles actuellement chargés. Renvoie la liste déchargée."""
+    names = loaded_models()
+    done = []
+    for name in names:
+        try:
+            unload(name)
+            done.append(name)
+        except Exception:
+            pass
+    return done
+
+
 # --------------------------------------------------------------------------
 # Re-prompt multi-requêtes (évolution v2)
 # --------------------------------------------------------------------------
