@@ -279,6 +279,7 @@ a.btn-new { display: block; text-align: center; text-decoration: none; }
 .admin-card h2 { margin: 0 0 14px; font-size: 16px; }
 .admin-form { display: flex; flex-direction: column; gap: 12px; max-width: 520px; }
 .admin-form label { display: flex; flex-direction: column; gap: 5px; font-size: 13px; color: var(--text-muted); }
+.admin-form .lbl { display: flex; align-items: center; gap: 6px; }
 .admin-form input, .admin-form select, .admin-form textarea {
   background: var(--bg); color: var(--text); border: 1px solid var(--border);
   border-radius: 8px; padding: 9px 11px; font-size: 14px; font-family: inherit;

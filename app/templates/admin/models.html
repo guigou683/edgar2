@@ -6,39 +6,37 @@
   {{ ui.admin_nav('models') }}
 
   <div class="admin-card">
-    <h2>Modèles Ollama installés</h2>
+    <h2>Modèles Ollama installés
+      {{ ui.info("bge-m3 (embeddings) est imposé et non modifiable. bge-reranker-v2-m3 est bundlé dans l'image. Les modèles sont pré-téléchargés hors-ligne dans le volume Ollama.") }}</h2>
     {% if installed %}
     <ul>{% for m in installed %}<li>{{ m }}</li>{% endfor %}</ul>
     {% else %}
-    <p class="help">Aucun modèle détecté (Ollama indisponible ou volume vide). Les modèles
-       sont pré-téléchargés hors-ligne dans le volume Ollama.</p>
+    <p class="help">Aucun modèle détecté (Ollama indisponible ou volume vide).</p>
     {% endif %}
-    <p class="help">bge-m3 (embeddings) est imposé et non modifiable. bge-reranker-v2-m3 est bundlé dans l'image.</p>
   </div>
 
   <div class="admin-card">
     <h2>Ressources machine &amp; profil recommandé</h2>
     <p class="help">Détecté : <b>{{ res.cpu_cores }}</b> cœur(s) CPU · RAM <b>{{ res.ram_total_gb }} Go</b>
       ({{ res.ram_available_gb }} Go disponibles){% if res.vram_gb %} · VRAM <b>{{ res.vram_gb }} Go</b>{% endif %}.</p>
-    <p class="help">Recommandation : parallélisme d'indexation <b>{{ rec.index_workers }}</b> worker(s)
-      (actuel : {{ index_workers }}). {{ rec.model_advice }}</p>
+    <p class="help">Recommandation : <b>{{ rec.index_workers }}</b> worker(s) d'indexation (actuel : {{ index_workers }}).
+      {{ ui.info(rec.model_advice) }}</p>
     <form class="inline-form" method="post" action="/admin/resources/apply">
       <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
       <button class="btn-mini" type="submit">Appliquer le profil recommandé</button>
     </form>
     <form class="admin-form" method="post" action="/admin/resources/vram" style="margin-top:14px;">
       <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
-      <label>VRAM du GPU (Go, saisie manuelle)
+      <label><span class="lbl">VRAM du GPU (Go)
+        {{ ui.info("Non détectable automatiquement (l'app n'a pas accès au GPU). Laisser vide si pas de GPU. Sert au conseil de modèle ci-dessus.") }}</span>
         <input type="text" name="gpu_vram" value="{{ gpu_vram }}" placeholder="ex. 6" autocomplete="off"></label>
-      <p class="help">Non détectable automatiquement (l'app n'a pas accès au GPU). Laisser vide si pas de GPU.
-        Sert au conseil de modèle ci-dessus.</p>
       <div><button class="btn-mini" type="submit">Enregistrer la VRAM</button></div>
     </form>
   </div>
 
   <div class="admin-card">
-    <h2>Réglages de recherche par défaut (globaux)</h2>
-    <p class="help">Ces valeurs s'appliquent à toutes les requêtes, sauf surcharge par session.</p>
+    <h2>Réglages de recherche par défaut (globaux)
+      {{ ui.info("Ces valeurs s'appliquent à toutes les requêtes, sauf surcharge par session.") }}</h2>
     <form class="admin-form" method="post" action="/admin/models/save">
       <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
       <label>Modèle de génération (LLM)
@@ -56,50 +54,43 @@
           <option value="bm25"   {% if cmode == 'bm25'   %}selected{% endif %}>Lexicale (mots-clés)</option>
         </select>
       </label>
-      <label class="inline"><input type="checkbox" name="use_reprompt" {% if defaults.get('use_reprompt', true) %}checked{% endif %}> Re-prompt multi-requêtes</label>
+      <label class="inline"><input type="checkbox" name="use_reprompt" {% if defaults.get('use_reprompt', true) %}checked{% endif %}> Re-prompt multi-requêtes
+        {{ ui.info("Reformule la question en plusieurs variantes avant de chercher : améliore le rappel, mais rallonge la recherche (un appel au LLM).") }}</label>
       <label>Nombre de reformulations (1–5)
         <input type="number" name="n_reformulations" min="1" max="5" value="{{ defaults.get('n_reformulations', 3) }}"></label>
-      <label class="inline"><input type="checkbox" name="use_rerank" {% if defaults.get('use_rerank', true) %}checked{% endif %}> Reranking (cross-encoder)</label>
+      <label class="inline"><input type="checkbox" name="use_rerank" {% if defaults.get('use_rerank', true) %}checked{% endif %}> Reranking (cross-encoder)
+        {{ ui.info("Ré-ordonne finement les passages avec un modèle dédié (CPU). Améliore la pertinence, mais ajoute quelques secondes.") }}</label>
       <label>Top-k conservés après reranking (1–30)
         <input type="number" name="top_k" min="1" max="30" value="{{ defaults.get('top_k', 8) }}"></label>
       <label>Candidats récupérés avant reranking (1–100)
         <input type="number" name="k_candidates" min="1" max="100" value="{{ defaults.get('k_candidates', 20) }}"></label>
-      <label>Seuil de pertinence (0–1, refus d'inventer)
+      <label><span class="lbl">Seuil de pertinence (0–1)
+        {{ ui.info("En dessous de ce score, un passage est écarté. Plus haut = plus strict (refuse plus souvent de répondre). Plus bas = plus permissif.") }}</span>
         <input type="number" name="threshold" min="0" max="1" step="0.05" value="{{ defaults.get('threshold', 0.3) }}"></label>
 
-      <label>Parallélisme d'indexation (workers OCR / CPU, 1–{{ index_workers_max }})
+      <label><span class="lbl">Parallélisme d'indexation (1–{{ index_workers_max }})
+        {{ ui.info("Nombre de cœurs utilisés pour l'OCR des pages lors de l'import. Plus élevé = plus rapide sur les PDF scannés, mais plus gourmand en RAM. Sur une machine à 8 Go, rester à 2. « 1 » = séquentiel.") }}</span>
         <input type="number" name="index_workers" min="1" max="{{ index_workers_max }}" value="{{ index_workers }}"></label>
-      <p class="help">Nombre de cœurs utilisés pour l'OCR des pages lors de l'import.
-         Plus élevé = plus rapide sur les PDF scannés, mais plus gourmand en RAM.
-         Sur une machine à 8 Go, rester à 2. « 1 » = séquentiel.</p>
 
-      <label>Concurrence question ↔ indexation
+      <label><span class="lbl">Concurrence question ↔ indexation
+        {{ ui.info("« Priorité » : pendant qu'un utilisateur pose une question, l'indexation marque une courte pause (recommandé sur GPU à faible VRAM). « Parallèle » : aucune pause — à réserver aux machines puissantes ou à un serveur Ollama distant.") }}</span>
         <select name="concurrency_policy">
-          <option value="priority" {% if concurrency_policy == 'priority' %}selected{% endif %}>Priorité aux requêtes (l'indexation se met en pause)</option>
-          <option value="parallel" {% if concurrency_policy == 'parallel' %}selected{% endif %}>Parallèle (les deux en même temps)</option>
+          <option value="priority" {% if concurrency_policy == 'priority' %}selected{% endif %}>Priorité aux requêtes</option>
+          <option value="parallel" {% if concurrency_policy == 'parallel' %}selected{% endif %}>Parallèle</option>
         </select></label>
-      <p class="help">« Priorité » : pendant qu'un utilisateur pose une question, l'indexation marque
-         une courte pause (recommandé sur GPU à faible VRAM). « Parallèle » : aucune pause — à réserver
-         aux machines puissantes ou à un serveur Ollama distant.</p>
 
-      <label>Questions traitées en parallèle (file d'attente au-delà)
+      <label><span class="lbl">Questions traitées en parallèle
+        {{ ui.info("Au-delà de ce nombre de questions simultanées, les suivantes attendent leur tour (« En file d'attente… »). Protège le GPU. « 1 » = une seule question à la fois.") }}</span>
         <input type="number" name="max_queries" min="1" max="64" value="{{ max_queries }}"></label>
-      <p class="help">Au-delà de ce nombre de questions simultanées, les suivantes attendent leur tour
-         (« En file d'attente… »). Protège le GPU. « 1 » = une seule question à la fois.</p>
 
-      <label>Sessions connectées maximum (0 = illimité)
+      <label><span class="lbl">Sessions connectées maximum (0 = illimité)
+        {{ ui.info("Plafond du nombre d'utilisateurs connectés en même temps. Au-delà, la connexion est refusée (les administrateurs ne sont jamais bloqués). « 0 » = pas de limite.") }}</span>
         <input type="number" name="max_sessions" min="0" max="10000" value="{{ max_sessions }}"></label>
-      <p class="help">Plafond du nombre d'utilisateurs connectés en même temps. Au-delà, la connexion
-         est refusée (les administrateurs ne sont jamais bloqués). « 0 » = pas de limite.</p>
 
-      <label>Serveur Ollama (URL ou IP:port)
-        <input type="text" name="ollama_url" value="{{ ollama_url }}"
-               placeholder="{{ ollama_url_default }}" autocomplete="off"></label>
-      <p class="help">Laisser <b>vide</b> pour l'Ollama interne du conteneur ({{ ollama_url_default }}).
-         Pour un Ollama distant sur le réseau local, saisir p.ex. <code>192.168.1.50:11434</code>
-         (le préfixe <code>http://</code> est ajouté automatiquement). Effectif immédiatement.
-         <br>En cours : <b>{{ ollama_url_effective }}</b> — {{ installed | length }} modèle(s) détecté(s).
-         Le serveur distant doit contenir les mêmes modèles (bge-m3 pour les embeddings, le LLM de génération).</p>
+      <label><span class="lbl">Serveur Ollama (URL ou IP:port)
+        {{ ui.info("Laisser vide pour l'Ollama interne du conteneur. Pour un Ollama distant du réseau local, saisir par ex. 192.168.1.50:11434 (le préfixe http:// est ajouté). Effectif immédiatement. Le serveur distant doit contenir les mêmes modèles (bge-m3 + le LLM de génération).") }}</span>
+        <input type="text" name="ollama_url" value="{{ ollama_url }}" placeholder="{{ ollama_url_default }}" autocomplete="off"></label>
+      <p class="help">En cours : <b>{{ ollama_url_effective }}</b> — {{ installed | length }} modèle(s) détecté(s).</p>
 
       <div><button class="btn-mini" type="submit">Enregistrer les défauts</button></div>
     </form>
