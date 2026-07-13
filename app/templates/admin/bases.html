@@ -33,10 +33,12 @@
           <td>{{ b.parse_strategy }}</td>
           <td class="help">{{ b.created_at[:10] }}</td>
           <td>
-            <form method="post" action="/admin/bases/delete"
-                  data-confirm="Supprimer la base « {{ b.name }} » et ses documents ?">
+            <form method="post" action="/admin/bases/delete" class="base-del-form"
+                  data-confirm="Supprimer la base « {{ b.name }} » (index + registre) ? Les fichiers du dossier ne seront supprimés que si la case « + fichiers » est cochée.">
               <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
               <input type="hidden" name="base_id" value="{{ b.id }}">
+              <label class="inline" title="Supprimer aussi les fichiers du dossier documentaire sur le disque">
+                <input type="checkbox" name="remove_documents"> + fichiers</label>
               <button class="btn-mini danger" type="submit">Supprimer</button>
             </form>
           </td>

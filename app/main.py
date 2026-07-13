@@ -931,14 +931,15 @@ async def admin_bases_create(
 
 @app.post("/admin/bases/delete")
 async def admin_bases_delete(request: Request, base_id: str = Form(...),
-                             csrf_token: str = Form(...)):
+                             remove_documents: str = Form(""), csrf_token: str = Form(...)):
     user, resp = _guard(request, auth.ROLE_ADMIN)
     if resp:
         return resp
     if _check_csrf(request, csrf_token):
-        bases.delete_base(base_id, remove_documents=True)
+        rm = remove_documents == "on"
+        bases.delete_base(base_id, remove_documents=rm)
         db.insert_audit("base_delete", user["id"], user["username"],
-                        client_ip(request), _ua(request), base_id)
+                        client_ip(request), _ua(request), f"{base_id} fichiers={'oui' if rm else 'conservés'}")
     return RedirectResponse("/admin/bases", status_code=303)
 
 
@@ -1107,8 +1108,6 @@ async def admin_models_save(request: Request):
             appsettings.set_index_workers(form.get("index_workers"))
         if form.get("ollama_url") is not None:
             appsettings.set_ollama_url(form.get("ollama_url"))
-        if form.get("gpu_vram") is not None:
-            appsettings.set_gpu_vram(form.get("gpu_vram"))
         if form.get("concurrency_policy") is not None:
             appsettings.set_concurrency_policy(form.get("concurrency_policy"))
         db.insert_audit("settings_update", user["id"], user["username"],
@@ -1135,6 +1134,20 @@ async def admin_models_unload(request: Request, model: str = Form(""),
         db.insert_audit("models_unload", user["id"], user["username"], client_ip(request),
                         _ua(request), f"déchargés={','.join(done) or '(aucun)'}")
     return RedirectResponse("/admin", status_code=303)
+
+
+@app.post("/admin/resources/vram")
+async def admin_resources_vram(request: Request, gpu_vram: str = Form(""),
+                               csrf_token: str = Form(...)):
+    """Enregistre la VRAM saisie (carte Ressources)."""
+    user, resp = _guard(request, auth.ROLE_ADMIN)
+    if resp:
+        return resp
+    if _check_csrf(request, csrf_token):
+        appsettings.set_gpu_vram(gpu_vram)
+        db.insert_audit("settings_update", user["id"], user["username"],
+                        client_ip(request), _ua(request), f"gpu_vram={gpu_vram}")
+    return RedirectResponse("/admin/models", status_code=303)
 
 
 @app.post("/admin/resources/apply")

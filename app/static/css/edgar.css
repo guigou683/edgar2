@@ -498,6 +498,13 @@ a.btn-mini { text-decoration: none; display: inline-block; }
 .summary-loading { display: flex; align-items: center; gap: 8px; color: var(--text-muted); padding: 12px 0; }
 
 /* --- Page À propos --- */
+/* Page « Mon compte » : centrée, même largeur que « À propos » */
+.account-page { display: flex; flex-direction: column; align-items: center; gap: 18px;
+  padding: 6vh 24px; overflow-y: auto; height: 100vh; }
+.account-page > * { width: 100%; max-width: 620px; }
+.account-page h1 { margin: 0; }
+.account-page .admin-card { margin-bottom: 0; }
+
 .about { display: flex; justify-content: center; padding: 6vh 24px; overflow-y: auto; height: 100vh; }
 .about-card { max-width: 620px; width: 100%; height: fit-content; background: var(--bg-elev); border: 1px solid var(--border); border-radius: 14px; padding: 32px; }
 .about-head { display: flex; align-items: center; gap: 16px; }

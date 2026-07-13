@@ -26,8 +26,14 @@
       <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
       <button class="btn-mini" type="submit">Appliquer le profil recommandé</button>
     </form>
-    <p class="help">La VRAM n'est pas détectable automatiquement (l'app n'a pas accès au GPU).
-      Renseignez-la dans les réglages ci-dessous pour affiner le conseil de modèle.</p>
+    <form class="admin-form" method="post" action="/admin/resources/vram" style="margin-top:14px;">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+      <label>VRAM du GPU (Go, saisie manuelle)
+        <input type="text" name="gpu_vram" value="{{ gpu_vram }}" placeholder="ex. 6" autocomplete="off"></label>
+      <p class="help">Non détectable automatiquement (l'app n'a pas accès au GPU). Laisser vide si pas de GPU.
+        Sert au conseil de modèle ci-dessus.</p>
+      <div><button class="btn-mini" type="submit">Enregistrer la VRAM</button></div>
+    </form>
   </div>
 
   <div class="admin-card">
@@ -66,10 +72,6 @@
       <p class="help">Nombre de cœurs utilisés pour l'OCR des pages lors de l'import.
          Plus élevé = plus rapide sur les PDF scannés, mais plus gourmand en RAM.
          Sur une machine à 8 Go, rester à 2. « 1 » = séquentiel.</p>
-
-      <label>VRAM du GPU (Go, saisie manuelle)
-        <input type="text" name="gpu_vram" value="{{ gpu_vram }}" placeholder="ex. 6" autocomplete="off"></label>
-      <p class="help">Sert au conseil de modèle (carte « Ressources » ci-dessus). Laisser vide si pas de GPU.</p>
 
       <label>Concurrence question ↔ indexation
         <select name="concurrency_policy">
