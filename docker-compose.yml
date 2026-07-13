@@ -38,6 +38,10 @@ services:
       - ./qdrant:/qdrant/storage              # base vectorielle (bind mount)
     ports:
       - "${QDRANT_PORT:-7333}:6333"
+    ulimits:
+      nofile:                                 # Linux natif : évite "Too many open files" (Qdrant ouvre bcp de fichiers)
+        soft: 65536
+        hard: 65536
     restart: unless-stopped
 
   app:
