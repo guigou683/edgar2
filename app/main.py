@@ -28,8 +28,8 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from starlette.concurrency import run_in_threadpool
 
-from core import (appsettings, auth, bases, coordinator, db, importer, ingest, llm,
-                  rag, resources, retrieval, vectorstore)
+from core import (appsettings, auth, bases, coordinator, db, importer, ingest,
+                  limits, llm, rag, resources, retrieval, vectorstore)
 from core.config import settings
 from core.security import (
     CSP_POLICY,
@@ -272,12 +272,19 @@ async def chat_stream(request: Request):
         yield _sse("done", {"message_id": mid, "conversation_id": conv_id})
 
     def event_stream():
-        # Priorité aux requêtes : signale l'activité pour que l'indexation cède le pas.
-        coordinator.query_begin()
+        # Limite de requêtes simultanées : au-delà, on attend son tour (file d'attente).
+        if not limits.try_acquire():
+            yield _sse("step", {"label": "En file d'attente…"})
+            limits.acquire()
         try:
-            yield from _pipeline()
+            # Priorité aux requêtes : signale l'activité pour que l'indexation cède le pas.
+            coordinator.query_begin()
+            try:
+                yield from _pipeline()
+            finally:
+                coordinator.query_end()
         finally:
-            coordinator.query_end()
+            limits.release()
 
     return StreamingResponse(event_stream(), media_type="text/event-stream",
                              headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"})
@@ -310,6 +317,15 @@ async def login_submit(
         db.insert_audit("login_failure", None, username, ip, ua, "échec d'authentification")
         return _render_with_csrf(request, "auth/login.html",
                                  {"title": "Connexion", "error": error})
+
+    # Plafond de sessions simultanées (0 = illimité). Les admins ne sont jamais
+    # bloqués (pour pouvoir toujours administrer).
+    cap = limits.max_sessions()
+    if cap and not auth.has_role(user, auth.ROLE_ADMIN) and db.count_active_sessions() >= cap:
+        db.insert_audit("login_capped", user["id"], user["username"], ip, ua, f"cap={cap}")
+        return _render_with_csrf(request, "auth/login.html", {
+            "title": "Connexion",
+            "error": f"Trop d'utilisateurs connectés ({cap} maximum). Réessayez dans un moment."})
 
     sid = auth.create_session(user["id"], ip, ua)
     db.insert_audit("login_success", user["id"], user["username"], ip, ua, "")
@@ -1083,6 +1099,8 @@ async def admin_models(request: Request):
         "ollama_url_default": settings.OLLAMA_URL,
         "res": res, "rec": rec, "gpu_vram": appsettings.get_gpu_vram(),
         "concurrency_policy": appsettings.get_concurrency_policy(),
+        "max_queries": appsettings.get_max_queries(),
+        "max_sessions": appsettings.get_max_sessions(),
     })
 
 
@@ -1110,6 +1128,10 @@ async def admin_models_save(request: Request):
             appsettings.set_ollama_url(form.get("ollama_url"))
         if form.get("concurrency_policy") is not None:
             appsettings.set_concurrency_policy(form.get("concurrency_policy"))
+        if form.get("max_queries") is not None:
+            appsettings.set_max_queries(form.get("max_queries"))
+        if form.get("max_sessions") is not None:
+            appsettings.set_max_sessions(form.get("max_sessions"))
         db.insert_audit("settings_update", user["id"], user["username"],
                         client_ip(request), _ua(request), "")
     return RedirectResponse("/admin/models", status_code=303)

@@ -279,6 +279,15 @@ def revoke_user_sessions(user_id: int) -> None:
         conn.execute("UPDATE sessions SET revoked = 1 WHERE user_id = ?", (user_id,))
 
 
+def count_active_sessions() -> int:
+    """Nombre de sessions actives (non révoquées, non expirées)."""
+    with get_conn() as conn:
+        return conn.execute(
+            "SELECT COUNT(*) n FROM sessions "
+            "WHERE (revoked IS NULL OR revoked = 0) AND expires_at > ?",
+            (now_iso(),)).fetchone()["n"]
+
+
 # --------------------------------------------------------------------------
 # Audit
 # --------------------------------------------------------------------------

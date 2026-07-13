@@ -82,6 +82,16 @@
          une courte pause (recommandé sur GPU à faible VRAM). « Parallèle » : aucune pause — à réserver
          aux machines puissantes ou à un serveur Ollama distant.</p>
 
+      <label>Questions traitées en parallèle (file d'attente au-delà)
+        <input type="number" name="max_queries" min="1" max="64" value="{{ max_queries }}"></label>
+      <p class="help">Au-delà de ce nombre de questions simultanées, les suivantes attendent leur tour
+         (« En file d'attente… »). Protège le GPU. « 1 » = une seule question à la fois.</p>
+
+      <label>Sessions connectées maximum (0 = illimité)
+        <input type="number" name="max_sessions" min="0" max="10000" value="{{ max_sessions }}"></label>
+      <p class="help">Plafond du nombre d'utilisateurs connectés en même temps. Au-delà, la connexion
+         est refusée (les administrateurs ne sont jamais bloqués). « 0 » = pas de limite.</p>
+
       <label>Serveur Ollama (URL ou IP:port)
         <input type="text" name="ollama_url" value="{{ ollama_url }}"
                placeholder="{{ ollama_url_default }}" autocomplete="off"></label>

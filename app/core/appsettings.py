@@ -176,6 +176,42 @@ def set_concurrency_policy(value: Any) -> str:
     return get_concurrency_policy()
 
 
+def _get_int(key: str, default: int) -> int:
+    try:
+        v = int(db.get_setting(key))
+        return v if v >= 0 else default
+    except (TypeError, ValueError):
+        return default
+
+
+def get_max_queries() -> int:
+    from core.limits import MAX_QUERIES_DEFAULT
+    return _get_int("max_queries", MAX_QUERIES_DEFAULT)
+
+
+def set_max_queries(value: Any) -> int:
+    from core.limits import MAX_QUERIES_DEFAULT
+    try:
+        v = max(0, min(64, int(value)))
+    except (TypeError, ValueError):
+        v = MAX_QUERIES_DEFAULT
+    db.set_setting("max_queries", str(v))
+    return v
+
+
+def get_max_sessions() -> int:
+    return _get_int("max_sessions", 0)
+
+
+def set_max_sessions(value: Any) -> int:
+    try:
+        v = max(0, min(10000, int(value)))
+    except (TypeError, ValueError):
+        v = 0
+    db.set_setting("max_sessions", str(v))
+    return v
+
+
 def get_gpu_vram() -> str:
     return db.get_setting(_VRAM_KEY) or ""
 
