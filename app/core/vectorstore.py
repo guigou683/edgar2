@@ -22,6 +22,7 @@ from core.config import settings
 DENSE = "dense"
 SPARSE = "sparse"
 DENSE_SIZE = 1024  # bge-m3, imposé
+UPSERT_BATCH = 256  # points par requête d'upsert : évite les timeouts sur gros fichiers
 
 _client: Optional[QdrantClient] = None
 
@@ -30,7 +31,9 @@ def get_client() -> QdrantClient:
     """Client Qdrant partagé (connexion paresseuse)."""
     global _client
     if _client is None:
-        _client = QdrantClient(url=settings.QDRANT_URL, timeout=60.0)
+        # 120 s : marge pour les gros lots ; l'upsert est de toute façon découpé
+        # en lots (UPSERT_BATCH) pour ne pas envoyer des milliers de points d'un coup.
+        _client = QdrantClient(url=settings.QDRANT_URL, timeout=120.0)
     return _client
 
 
@@ -124,18 +127,24 @@ def upsert_chunks(base_id: str, points: Sequence[dict[str, Any]]) -> None:
         }
     """
     client = get_client()
-    structs = [
-        qm.PointStruct(
-            id=p["id"],
-            vector={
-                DENSE: p["dense"],
-                SPARSE: qm.SparseVector(indices=p["sparse_indices"], values=p["sparse_values"]),
-            },
-            payload=p.get("payload", {}),
-        )
-        for p in points
-    ]
-    client.upsert(collection_name(base_id), points=structs)
+    name = collection_name(base_id)
+    total = len(points)
+    # Upsert par lots : un fichier volumineux (milliers de chunks) envoyé en un
+    # seul appel dépassait le timeout du client Qdrant (« ResponseHandling
+    # Exception : Timed Out »). Des lots bornés gardent chaque requête courte.
+    for i in range(0, total, UPSERT_BATCH):
+        structs = [
+            qm.PointStruct(
+                id=p["id"],
+                vector={
+                    DENSE: p["dense"],
+                    SPARSE: qm.SparseVector(indices=p["sparse_indices"], values=p["sparse_values"]),
+                },
+                payload=p.get("payload", {}),
+            )
+            for p in points[i:i + UPSERT_BATCH]
+        ]
+        client.upsert(name, points=structs)
 
 
 # --------------------------------------------------------------------------
