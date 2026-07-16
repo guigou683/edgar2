@@ -281,6 +281,34 @@ document.addEventListener("DOMContentLoaded", () => {
     cite.appendChild(frame);
   });
 
+  // --- Renommer une conversation (icône crayon -> boîte de saisie) ---
+  document.addEventListener("click", async (e) => {
+    const btn = e.target.closest("[data-rename]");
+    if (!btn) return;
+    const wrap = btn.closest(".conv-item-wrap");
+    const link = wrap && wrap.querySelector(".conv-item");
+    if (!link) return;
+    const current = link.textContent.trim();
+    const name = window.prompt("Renommer la conversation :", current);
+    if (name === null) return;
+    const title = name.trim();
+    if (!title || title === current) return;
+    const chatEl = document.querySelector(".chat");
+    const body = new URLSearchParams({ title, csrf_token: (chatEl && chatEl.dataset.csrf) || "" });
+    try {
+      const r = await fetch(btn.getAttribute("data-rename"), {
+        method: "POST",
+        headers: { "Content-Type": "application/x-www-form-urlencoded" },
+        body,
+      });
+      if (!r.ok) { window.alert("Échec du renommage."); return; }
+      const data = await r.json();
+      link.textContent = data.title || title;
+    } catch (_) {
+      window.alert("Échec du renommage.");
+    }
+  });
+
   // --- Panneau d'expérimentation ---
   const panel = document.querySelector("[data-panel]");
   const chat = document.querySelector(".chat");

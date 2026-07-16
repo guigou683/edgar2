@@ -348,6 +348,12 @@ def touch_conversation(conv_id: int) -> None:
                      (now_iso(), conv_id))
 
 
+def rename_conversation(conv_id: int, title: str) -> None:
+    """Renomme une conversation (updated_at inchangé : pas de remontée en tête de liste)."""
+    with get_conn() as conn:
+        conn.execute("UPDATE conversations SET title = ? WHERE id = ?", (title, conv_id))
+
+
 def add_message(conversation_id: int, role: str, content: str,
                 sources_json: Optional[str] = None,
                 diagnostics_json: Optional[str] = None) -> int:

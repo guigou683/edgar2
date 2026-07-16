@@ -532,6 +532,23 @@ async def conversations_delete_all(request: Request, base: str = Form(...),
     return RedirectResponse(f"/chat?base={base}", status_code=303)
 
 
+@app.post("/conversations/{conv_id}/rename")
+async def conversation_rename(request: Request, conv_id: int,
+                              title: str = Form(...), csrf_token: str = Form(...)):
+    """Renomme une conversation (réponse JSON). CSRF + appartenance vérifiés."""
+    user = auth.current_user(request)
+    if not user:
+        return JSONResponse({"error": "non authentifié"}, status_code=401)
+    if not _check_csrf(request, csrf_token):
+        return JSONResponse({"error": "CSRF invalide"}, status_code=403)
+    c = db.get_conversation(conv_id)
+    if not c or c["user_id"] != user["id"]:
+        return JSONResponse({"error": "introuvable"}, status_code=404)
+    new_title = (title or "").strip()[:200] or "Conversation"
+    db.rename_conversation(conv_id, new_title)
+    return JSONResponse({"ok": True, "title": new_title})
+
+
 # --------------------------------------------------------------------------
 # Consultation de document (aperçu PDF positionné, téléchargement) — confiné
 # --------------------------------------------------------------------------
