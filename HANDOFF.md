@@ -15,8 +15,8 @@ EDGAR v2 est une application **RAG documentaire souveraine et 100 % hors-ligne**
 réponses en français **sourcées** avec refus d'inventer. Aucune sortie réseau externe.
 
 **Scénario cible « terre ↔ mer »** : un **PC terre** (puissant, mis à jour, fait les grosses
-indexations) exporte code/modèles/données ; les **PC mer** (embarqués) importent. Le script
-`scripts/edgar_sync.sh` gère cette synchro hors-ligne.
+indexations) exporte code/modèles/données ; les **PC mer** (embarqués) importent. La
+**console d'exploitation** (`tools/edgar_ops/`, Tkinter) gère installation et synchro hors-ligne.
 
 ---
 
@@ -73,7 +73,10 @@ scripts/
   gen_cert.sh          # certificat serveur
   seed_demo.py         # base « demonstration » de démonstration
   export_offline.sh    # bundle d'installation complet hors-ligne
-  edgar_sync.sh + _sync.py   # synchro terre<->mer (export/import interactif)
+  _sync.py             # aide registre/DB (dans le conteneur) pour la console de synchro
+tools/edgar_ops/       # console Tkinter (hôte) : installation + synchro terre<->mer
+  core.py              # primitives (docker/tar/env/cert/modèles/qdrant/_sync), sans sudo
+  ui.py                # interface (accueil -> Installer / Synchroniser)
   verify_offline.sh    # contrôle hors-ligne
 docker-compose.yml, app/Dockerfile, nginx/, .env.example
 ```
@@ -137,7 +140,9 @@ format `prenom.nom` avec **validation dynamique** + checklist mot de passe.
 Chat : étapes de recherche animées ; étape **« Chargement du modèle »** à froid ; listes
 Markdown correctes ; reprise si réponse vide.
 
-Synchro **terre↔mer** : `scripts/edgar_sync.sh` (voir §8).
+Synchro **terre↔mer** + installation assistée : **console d'exploitation** `tools/edgar_ops/`
+(Tkinter, `bash tools/edgar_ops/run.sh` ; dépendance `python3-tk`). Voir §8.
+Garanties : aucun `sudo`, les **comptes restent locaux** (jamais transférés).
 
 ---
 
@@ -147,9 +152,9 @@ Le clone ne contient **que le code**. Il manque :
 - **Images Docker** `edgar2-app`, `edgar2-nginx` → se **construisent** (`docker compose build`).
   `ollama/ollama:0.30.9` et `qdrant/qdrant:v1.12.4` → se **pull** (ou via bundle hors-ligne).
 - **Modèles Ollama** (`bge-m3`, `mistral:7b`, `qwen2.5:7b`) → `scripts/pull_models.sh`
-  (machine connectée) **ou** transfert via `edgar_sync.sh` / `export_offline.sh` depuis l'ancien poste.
+  (machine connectée) **ou** transfert via la **console** `tools/edgar_ops/` / `export_offline.sh` depuis l'ancien poste.
 - **Données** (bases, documents, index Qdrant) → repartir **à vide** + `seed_demo.py`,
-  **ou** importer depuis l'ancien poste via `edgar_sync.sh`.
+  **ou** importer depuis l'ancien poste via la **console** `tools/edgar_ops/`.
 
 ---
 
@@ -212,8 +217,8 @@ docker compose exec -T app python scripts/seed_demo.py   # base « demonstration
 Ouvrir **https://localhost:8443** (certificat auto-signé → accepter l'exception).
 
 ### 8.6 (Option) Reprendre les données de l'ancien poste (Windows)
-Sur l'ancien poste : `bash scripts/edgar_sync.sh` → **TERRE** → exporter modèles/données.
-Copier le dossier `sync_bundle/` sur le Linux, puis : `bash scripts/edgar_sync.sh` → **MER**.
+Sur l'ancien poste : `bash tools/edgar_ops/run.sh` → **Synchroniser → Exporter (Terre)**.
+Copier le dossier d'export sur le Linux, puis : `bash tools/edgar_ops/run.sh` → **Synchroniser → Importer (Mer)**.
 
 ---
 
@@ -222,9 +227,11 @@ Copier le dossier `sync_bundle/` sur le Linux, puis : `bash scripts/edgar_sync.s
 - **Docker Desktop instable = spécifique Windows.** Sur Linux natif (Docker Engine), plus
   de « Starting the Docker Engine » bloqué. (Sur Windows, le remède était : tuer les process
   `docker`, `wsl --shutdown`, relancer.)
-- **Permissions `./ollama` sur Linux** : le conteneur ollama écrit en `root`. Pour lire les
-  manifestes/blobs (export de modèles via `edgar_sync.sh`), lancer le script avec les droits
-  suffisants (ex. `sudo`) si les fichiers sont `root:root`.
+- **Permissions `./ollama` / `./qdrant` sur Linux** : les conteneurs écrivent en `root`.
+  La console gère ce cas **sans `sudo`** : les extractions à l'import passent par un
+  **conteneur root jetable** (`edgar2-app`) au lieu du script hôte (`core._container_untar`).
+  L'export lit côté hôte (fichiers world-readable) ; si des blobs de modèles étaient
+  `root:root` non lisibles, l'export de modèles devrait passer par le même mécanisme (à surveiller).
 - **GPU 6 Go** : `bge-m3` + un 7B ne tiennent pas ensemble → bascule de modèle. Options :
   modèle de génération 3B (coexiste), déchargement des modèles, ou politique de concurrence
   « priorité aux requêtes ». Voir Admin → Modèles & recherche.

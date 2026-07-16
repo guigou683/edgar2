@@ -14,8 +14,15 @@ important de fichiers**.
 ## [2.0.0] — prévue
 - Validation hors-ligne en conditions réelles sur un **corpus volumineux** (perfs,
   qualité de récupération, robustesse ingestion à l'échelle).
-- Pistes : enrichissement LLM des mots-clés à l'ingestion (option par base),
-  viewer PDF inline plus poussé, optimisations mémoire/VRAM.
+- **Console d'exploitation** (`tools/edgar_ops/`, Tkinter, sans `sudo`) : **installation**
+  assistée et **synchronisation terre↔mer** (bases, documents, index Qdrant, modèles). Les
+  **comptes restent locaux** (jamais transférés) ; l'archive de code exclut `.env` ; les
+  résumés de documents sont transférés avec leur base. Remplace `scripts/edgar_sync.sh`.
+  Dépendance poste opérateur : `python3-tk`.
+- Pistes restantes : correctifs du test hors-ligne (timeout upsert Qdrant sur très gros
+  fichiers, `keep_alive` explicite pour Ollama distant, renommage des conversations,
+  formats non supportés ignorés proprement, résumé long en map-reduce), enrichissement LLM
+  des mots-clés à l'ingestion (option par base), viewer PDF inline plus poussé, optimisations mémoire/VRAM.
 
 ## [1.2.0] — 2026-07-06 — stabilité, gestion documentaire & performances
 

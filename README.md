@@ -70,6 +70,8 @@ Quatre services conteneurisés (Docker Compose) :
 - **Docker** + **Docker Compose**.
 - GPU **optionnel** : pilote NVIDIA + NVIDIA Container Toolkit (sinon exécution CPU,
   plus lente). Fonctionne confortablement sur un GPU de 8 Go de VRAM.
+- **Console d'exploitation** (`tools/edgar_ops/`, installation + synchro hors-ligne) :
+  **Python 3 + Tkinter** (`python3-tk`) sur le poste opérateur. Aucune autre dépendance.
 
 ---
 
@@ -135,6 +137,14 @@ dossiers `./ollama` et `./qdrant`, puis `docker compose up -d`. Le **pilote NVID
 `--network none`, puis pipeline complet (ingestion, recherche, reranking, génération)
 et HTTPS sur un réseau **sans aucune sortie Internet**.
 
+### Console d'exploitation (installation & synchronisation)
+
+Une **application graphique** (Tkinter, `bash tools/edgar_ops/run.sh`) assiste, sur le
+poste, la **mise en service** (chargement des images/modèles, `.env`, certificat,
+compte admin) et la **synchronisation terre ↔ mer** (bases, documents, index Qdrant,
+modèles). Elle pilote Docker **sans `sudo`** et **ne touche jamais aux comptes** :
+ceux-ci restent propres à chaque poste. Dépendance : `python3-tk`.
+
 ---
 
 ## Sécurité (ANSSI / PSSI-A)
@@ -159,7 +169,8 @@ edgar2/
     core/                     # config, auth, db, bases, ingest, importer, parsers,
                               #   vectorstore, sparse, keywords, rerank, llm, retrieval, rag
     templates/  static/       # Jinja2 + CSS/JS vanilla (assets vendus localement)
-  scripts/                    # bootstrap admin, gen_cert, download_docker, export/verify offline
+  scripts/                    # bootstrap admin, gen_cert, download_docker, export/verify offline, _sync
+  tools/edgar_ops/            # console Tkinter (hôte) : installation + synchro terre↔mer
   CHANGELOG.md
 ```
 
