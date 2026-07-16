@@ -290,6 +290,7 @@ a.btn-new { display: block; text-align: center; text-decoration: none; }
 .pill-active { background: #16321f; color: #a7e0bd; }
 .pill-pending { background: #16263a; color: #a9cbef; }
 .pill-suspended { background: #3a1a1f; color: #f3b6bd; }
+.pill-muted { background: #23262e; color: #9aa0a8; }
 .status-ok { color: #a7e0bd; } .status-ko { color: #f3b6bd; }
 .btn-mini { padding: 5px 10px; background: var(--marine-acc); color: #fff; border: none; border-radius: 6px; font-size: 12px; cursor: pointer; }
 .btn-mini.danger { background: #5a2630; }

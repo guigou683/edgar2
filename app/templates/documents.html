@@ -67,7 +67,7 @@
 {% set short = d.filename.split('/')[-1] %}
 <tr class="dt-row">
   <td class="dt-name"><span title="{{ d.filename }}">📄 {{ short }}</span></td>
-  <td class="dt-status"><span class="pill pill-{{ 'active' if d.status=='indexed' else ('suspended' if d.status=='failed' else 'pending') }}">{{ d.status }}</span></td>
+  <td class="dt-status"><span class="pill pill-{{ {'indexed':'active','failed':'suspended','ignored':'muted'}.get(d.status, 'pending') }}">{{ {'indexed':'indexé','failed':'échec','pending':'en attente','ignored':'ignoré'}.get(d.status, d.status) }}</span></td>
   <td class="dt-num help">{{ d.pages or '—' }}</td>
   <td class="dt-num help">{{ d.chunks or '—' }}</td>
   <td class="dt-num help">{{ (d.size // 1024) }} Ko</td>
@@ -134,7 +134,7 @@
   {% if sync_msg %}<p class="alert alert-ok">{{ sync_msg }}</p>{% endif %}
 
   {% if base_id %}
-  {% set status_colors = {'indexed': '#4f9e7a', 'failed': '#c0566a', 'pending': '#b8923f', '?': '#7a8296'} %}
+  {% set status_colors = {'indexed': '#4f9e7a', 'failed': '#c0566a', 'pending': '#b8923f', 'ignored': '#9aa0a8', '?': '#7a8296'} %}
   {% set strat_colors = {'fast': '#4a7bc0', 'ocr_only': '#8a5bc0', 'fast (OCR auto)': '#3fa7bd', '—': '#7a8296'} %}
   {% set pending = overview.by_status.get('pending', 0) %}
   {% set failed = overview.by_status.get('failed', 0) %}
@@ -164,6 +164,7 @@
         <option value="indexed" {% if status=='indexed' %}selected{% endif %}>Indexés</option>
         <option value="failed" {% if status=='failed' %}selected{% endif %}>En échec</option>
         <option value="pending" {% if status=='pending' %}selected{% endif %}>En attente</option>
+        <option value="ignored" {% if status=='ignored' %}selected{% endif %}>Ignorés</option>
       </select>
       <button class="btn-mini" type="submit">Rechercher</button>
       {% if q or status %}<a class="help" href="/documents?base={{ base_id }}{% if folder %}&folder={{ folder | urlencode }}{% endif %}">réinitialiser</a>{% endif %}

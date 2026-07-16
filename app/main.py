@@ -29,7 +29,7 @@ from fastapi.templating import Jinja2Templates
 from starlette.concurrency import run_in_threadpool
 
 from core import (appsettings, auth, bases, coordinator, db, importer, ingest,
-                  limits, llm, rag, resources, retrieval, vectorstore)
+                  limits, llm, parsers, rag, resources, retrieval, vectorstore)
 from core.config import settings
 from core.security import (
     CSP_POLICY,
@@ -581,8 +581,12 @@ def _sync_documents(base_id: str) -> dict[str, int]:
     added = 0
     for rel, size in on_disk.items():
         if rel not in known:
-            db.upsert_document(base_id, rel, "pending", 0, 0, None, size, None)
-            added += 1
+            if parsers.is_supported(rel):
+                db.upsert_document(base_id, rel, "pending", 0, 0, None, size, None)
+                added += 1
+            else:   # format non pris en charge : visible « ignoré », jamais indexé
+                db.upsert_document(base_id, rel, "ignored", 0, 0, None, size,
+                                   "format non pris en charge")
     removed = 0
     for name in known - set(on_disk):          # fichier disparu du disque -> purge
         try:

@@ -55,8 +55,12 @@ def record_result(base_id: str, filename: str, rep: dict[str, Any],
                   strategy: str, size: int) -> str:
     """Met à jour le registre des documents selon le résultat d'ingestion.
 
-    Renvoie l'issue : 'indexed' | 'skipped' | 'failed'.
+    Renvoie l'issue : 'indexed' | 'skipped' | 'ignored' | 'failed'.
     """
+    if rep.get("ignored"):
+        db.upsert_document(base_id, filename, "ignored", 0, 0, None, size,
+                           "format non pris en charge")
+        return "ignored"
     if rep.get("skipped"):
         return "skipped"
     if rep.get("indexed", 0) > 0:
@@ -86,7 +90,7 @@ def _record(job_id: str, base_id: str, doc_id: str, rep: dict, strategy: str, si
     with _lock:
         j = _jobs[job_id]
         j["done"] += 1
-        if issue == "skipped":
+        if issue in ("skipped", "ignored"):
             j["skipped"] += 1
         elif issue == "indexed":
             j["succeeded"] += 1
@@ -176,6 +180,9 @@ def _worker(job_id: str, base_id: str, paths: list[Path], strategy: str,
             status = pf.get("status")
             if status == "skipped":
                 rep = {"indexed": 0, "skipped": True, "reason": pf.get("reason", "")}
+            elif status == "ignored":       # format non pris en charge -> statut « ignored »
+                rep = {"indexed": 0, "ignored": True,
+                       "reason": pf.get("reason", "format non pris en charge")}
             elif status in ("empty", "error"):
                 if reindex:                    # ré-analyse : purge quand même les anciens points
                     try:

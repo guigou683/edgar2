@@ -159,6 +159,11 @@ def prepare_file(base_id: str, file_path: str, file_name: Optional[str] = None,
     remonte l'avancement intra-fichier (analyse / ocr / keywords)."""
     p = Path(file_path)
     file_name = file_name or p.name
+    from core.parsers import is_supported
+    if not is_supported(file_name):
+        # Format non pris en charge (ex. .mp4) : ignoré proprement, sans même lire
+        # le fichier ni tenter une analyse (évite un « échec »).
+        return {"status": "ignored", "reason": "format non pris en charge"}
     doc_hash = file_hash(p.read_bytes())
     if skip_if_indexed and is_indexed(base_id, doc_hash):
         return {"status": "skipped", "reason": "document déjà indexé", "doc_hash": doc_hash}

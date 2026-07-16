@@ -14,6 +14,22 @@ from pathlib import Path
 # Extensions image : OCR forcé quelle que soit la stratégie de la base.
 IMAGE_EXTS = {".png", ".jpg", ".jpeg", ".tiff", ".tif", ".bmp", ".gif", ".webp"}
 
+# Formats documentaires pris en charge (via unstructured / pdf).
+DOC_EXTS = {
+    ".pdf", ".docx", ".doc", ".odt", ".rtf", ".txt", ".text", ".md", ".markdown",
+    ".rst", ".html", ".htm", ".xml", ".epub", ".pptx", ".ppt", ".xlsx", ".xls",
+    ".csv", ".tsv", ".eml", ".msg", ".json",
+}
+
+# Liste blanche complète : tout le reste (mp4, zip, exe…) est **ignoré** proprement,
+# sans tentative d'indexation ni statut « échec ».
+SUPPORTED_EXTS = IMAGE_EXTS | DOC_EXTS
+
+
+def is_supported(file_name: str) -> bool:
+    """Vrai si l'extension du fichier fait partie des formats pris en charge."""
+    return Path(file_name).suffix.lower() in SUPPORTED_EXTS
+
 
 def parse_file(path: str, file_name: str, strategy: str = "fast",
                ocr_workers: int = 1, progress=None) -> list:
