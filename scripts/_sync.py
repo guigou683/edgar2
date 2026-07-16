@@ -2,8 +2,8 @@
 """Aide base de données pour scripts/edgar_sync.sh — exécuté DANS le conteneur app
 (accès aux modules core + data/bases.json + registre SQLite).
 
-  export-base <id>   : écrit {base, documents} en JSON sur stdout
-  import-base        : lit ce JSON sur stdin, réinjecte la base (id conservé) + registre
+  export-base <id>   : écrit {base, documents, summaries} en JSON sur stdout
+  import-base        : lit ce JSON sur stdin, réinjecte la base (id conservé) + registre + résumés
   list-bases         : liste « id<TAB>nom » des bases présentes
 """
 import json
@@ -22,7 +22,16 @@ def export_base(bid: str) -> None:
     if not b:
         print(f"base introuvable : {bid}", file=sys.stderr)
         sys.exit(1)
-    json.dump({"base": b, "documents": db.list_documents(bid)}, sys.stdout, ensure_ascii=False)
+    docs = db.list_documents(bid)
+    # Résumés de documents (mis en cache) : transférés avec la base pour ne pas
+    # les perdre à la synchro. Récupérés par fichier (pas de fonction de liste).
+    summaries = []
+    for d in docs:
+        s = db.get_document_summary(bid, d["filename"])
+        if s:
+            summaries.append(s)
+    json.dump({"base": b, "documents": docs, "summaries": summaries},
+              sys.stdout, ensure_ascii=False)
 
 
 def import_base() -> None:
@@ -39,8 +48,17 @@ def import_base() -> None:
                            d.get("pages") or 0, d.get("strategy"), d.get("size") or 0,
                            d.get("error"))
         n += 1
+    # Résumés (rétro-compatible : absents des anciens bundles).
+    s_n = 0
+    for s in data.get("summaries", []):
+        try:
+            db.save_document_summary(b["id"], s["filename"], s["summary"],
+                                     s.get("model"), s.get("chunks") or 0, s.get("created_by"))
+            s_n += 1
+        except Exception:
+            pass
     print(json.dumps({"base": b["id"], "nom": b.get("name", ""),
-                      "cree": created, "documents": n}, ensure_ascii=False))
+                      "cree": created, "documents": n, "resumes": s_n}, ensure_ascii=False))
 
 
 def list_bases() -> None:

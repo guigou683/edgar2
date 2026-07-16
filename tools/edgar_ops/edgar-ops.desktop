@@ -1,0 +1,7 @@
+[Desktop Entry]
+Type=Application
+Name=EDGAR — Console d'exploitation
+Comment=Installation et synchronisation hors-ligne
+Exec=bash -c 'cd "%k/../.." 2>/dev/null; python3 tools/edgar_ops/ui.py'
+Terminal=false
+Categories=Utility;
