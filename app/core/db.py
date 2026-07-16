@@ -132,20 +132,41 @@ CREATE INDEX IF NOT EXISTS idx_docs_base ON documents(base_id);
 CREATE TABLE IF NOT EXISTS document_summaries (
     base_id    TEXT NOT NULL,
     filename   TEXT NOT NULL,
+    kind       TEXT NOT NULL DEFAULT 'short',   -- 'short' (aperçu) | 'long' (map-reduce)
     summary    TEXT NOT NULL,
     model      TEXT,
     chunks     INTEGER NOT NULL DEFAULT 0,
     created_at TEXT NOT NULL,
     created_by TEXT,
-    PRIMARY KEY (base_id, filename)
+    PRIMARY KEY (base_id, filename, kind)
 );
 """
 
 
 def init_db() -> None:
-    """Crée le schéma s'il n'existe pas."""
+    """Crée le schéma s'il n'existe pas, puis applique les migrations légères."""
     with get_conn() as conn:
         conn.executescript(SCHEMA)
+        _migrate(conn)
+
+
+def _migrate(conn) -> None:
+    """Migrations idempotentes sur bases existantes."""
+    # document_summaries : ajout de la colonne `kind` (résumé court / long) + PK élargie.
+    cols = [r[1] for r in conn.execute("PRAGMA table_info(document_summaries)")]
+    if cols and "kind" not in cols:
+        conn.executescript(
+            "ALTER TABLE document_summaries RENAME TO _ds_old;"
+            "CREATE TABLE document_summaries ("
+            "  base_id TEXT NOT NULL, filename TEXT NOT NULL,"
+            "  kind TEXT NOT NULL DEFAULT 'short', summary TEXT NOT NULL, model TEXT,"
+            "  chunks INTEGER NOT NULL DEFAULT 0, created_at TEXT NOT NULL, created_by TEXT,"
+            "  PRIMARY KEY (base_id, filename, kind));"
+            "INSERT INTO document_summaries "
+            "  (base_id, filename, kind, summary, model, chunks, created_at, created_by)"
+            "  SELECT base_id, filename, 'short', summary, model, chunks, created_at, created_by"
+            "  FROM _ds_old;"
+            "DROP TABLE _ds_old;")
 
 
 # --------------------------------------------------------------------------
@@ -501,24 +522,34 @@ def delete_document_row(base_id: str, filename: str) -> None:
 # --------------------------------------------------------------------------
 # Résumés de documents (cache LLM : généré à la demande, réutilisé ensuite)
 # --------------------------------------------------------------------------
-def get_document_summary(base_id: str, filename: str) -> Optional[dict[str, Any]]:
+def get_document_summary(base_id: str, filename: str,
+                         kind: str = "short") -> Optional[dict[str, Any]]:
     with get_conn() as conn:
         row = conn.execute(
-            "SELECT * FROM document_summaries WHERE base_id = ? AND filename = ?",
-            (base_id, filename)).fetchone()
+            "SELECT * FROM document_summaries WHERE base_id = ? AND filename = ? AND kind = ?",
+            (base_id, filename, kind)).fetchone()
         return dict(row) if row else None
 
 
+def list_document_summaries(base_id: str) -> list[dict[str, Any]]:
+    """Tous les résumés d'une base (tous types) — pour la synchro terre↔mer."""
+    with get_conn() as conn:
+        rows = conn.execute(
+            "SELECT * FROM document_summaries WHERE base_id = ?", (base_id,)).fetchall()
+        return [dict(r) for r in rows]
+
+
 def save_document_summary(base_id: str, filename: str, summary: str,
-                          model: Optional[str], chunks: int, created_by: Optional[str]) -> None:
+                          model: Optional[str], chunks: int, created_by: Optional[str],
+                          kind: str = "short") -> None:
     with get_conn() as conn:
         conn.execute(
-            "INSERT INTO document_summaries (base_id, filename, summary, model, chunks, "
-            "created_at, created_by) VALUES (?, ?, ?, ?, ?, ?, ?) "
-            "ON CONFLICT(base_id, filename) DO UPDATE SET summary=excluded.summary, "
+            "INSERT INTO document_summaries (base_id, filename, kind, summary, model, chunks, "
+            "created_at, created_by) VALUES (?, ?, ?, ?, ?, ?, ?, ?) "
+            "ON CONFLICT(base_id, filename, kind) DO UPDATE SET summary=excluded.summary, "
             "model=excluded.model, chunks=excluded.chunks, created_at=excluded.created_at, "
             "created_by=excluded.created_by",
-            (base_id, filename, summary, model, chunks, now_iso(), created_by))
+            (base_id, filename, kind, summary, model, chunks, now_iso(), created_by))
 
 
 def delete_document_summary(base_id: str, filename: str) -> None:

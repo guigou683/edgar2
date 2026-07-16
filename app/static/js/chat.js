@@ -524,6 +524,7 @@ document.addEventListener("DOMContentLoaded", () => {
     const meta = summaryModal.querySelector("[data-summary-meta]");
     const body = summaryModal.querySelector("[data-summary-body]");
     const regenBtn = summaryModal.querySelector("[data-summary-regen]");
+    const longBtn = summaryModal.querySelector("[data-summary-long]");
     let es = null, current = null;
     const close = () => {
       if (es) { es.close(); es = null; }
@@ -534,10 +535,12 @@ document.addEventListener("DOMContentLoaded", () => {
       const d = new Date(iso);
       return isNaN(d) ? "" : d.toLocaleString("fr-FR");
     };
-    const run = (file, base, force) => {
-      current = { file: file, base: base };
+    const run = (file, base, force, kind) => {
+      kind = kind === "long" ? "long" : "short";
+      current = { file: file, base: base, kind: kind };
       if (es) es.close();
-      title.textContent = "Résumé — " + file.split("/").pop();
+      title.textContent = (kind === "long" ? "Résumé long — " : "Résumé — ") + file.split("/").pop();
+      if (longBtn) longBtn.hidden = kind === "long";
       regenBtn.hidden = true;
       regenBtn.disabled = true;
       meta.innerHTML = '<span class="spin"></span> '
@@ -547,7 +550,8 @@ document.addEventListener("DOMContentLoaded", () => {
       summaryModal.hidden = false;
       let buffer = "", metaText = "", cached = false;
       const url = "/documents/summary?base=" + encodeURIComponent(base)
-                + "&file=" + encodeURIComponent(file) + (force ? "&force=1" : "");
+                + "&file=" + encodeURIComponent(file) + (force ? "&force=1" : "")
+                + (kind === "long" ? "&kind=long" : "");
       es = new EventSource(url);
       es.addEventListener("meta", (e) => {
         const d = JSON.parse(e.data);
@@ -556,7 +560,8 @@ document.addEventListener("DOMContentLoaded", () => {
           ? "Résumé enregistré" + (d.created_at ? " le " + fmtDate(d.created_at) : "")
             + " · " + d.chunks + " extrait(s)."
           : "Synthèse de " + d.chunks + " extrait(s)"
-            + (d.truncated ? " (document volumineux : début synthétisé)." : ".");
+            + (d.kind === "long" ? " (synthèse complète)."
+               : (d.truncated ? " (document volumineux : début synthétisé — voir « Résumé long »)." : "."));
         meta.innerHTML = cached ? metaText : ('<span class="spin"></span> ' + metaText);
       });
       es.addEventListener("token", (e) => {
@@ -579,10 +584,11 @@ document.addEventListener("DOMContentLoaded", () => {
     };
     summaryModal.querySelector("[data-summary-close]").addEventListener("click", close);
     summaryModal.addEventListener("click", (e) => { if (e.target === summaryModal) close(); });
-    regenBtn.addEventListener("click", () => { if (current) run(current.file, current.base, true); });
+    regenBtn.addEventListener("click", () => { if (current) run(current.file, current.base, true, current.kind); });
+    if (longBtn) longBtn.addEventListener("click", () => { if (current) run(current.file, current.base, false, "long"); });
     document.querySelectorAll("[data-summary]").forEach((btn) => {
       btn.addEventListener("click", () => run(btn.getAttribute("data-file"),
-                                              btn.getAttribute("data-base"), false));
+                                              btn.getAttribute("data-base"), false, "short"));
     });
   }
 

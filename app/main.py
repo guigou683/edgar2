@@ -699,8 +699,10 @@ async def documents_sync(request: Request, base_id: str = Form(...), csrf_token:
 
 
 @app.get("/documents/summary")
-async def document_summary(request: Request, base: str, file: str, force: int = 0):
+async def document_summary(request: Request, base: str, file: str, force: int = 0,
+                           kind: str = "short"):
     """Flux SSE : synthèse d'un document (LLM) à partir de tous ses extraits indexés.
+    `kind` = 'short' (aperçu, tronqué si volumineux) ou 'long' (map-reduce, tout le document).
 
     Le résumé est mis en cache (table document_summaries) : au premier appel il est
     généré puis enregistré ; les appels suivants le renvoient instantanément. Le
@@ -711,14 +713,16 @@ async def document_summary(request: Request, base: str, file: str, force: int = 
     if not bases.get_base(base):
         return JSONResponse({"error": "base inconnue"}, status_code=404)
     name = file.strip().replace("\\", "/")
+    kind = "long" if kind == "long" else "short"
 
     # Cache : renvoi immédiat si un résumé existe et qu'on ne force pas la régénération.
     if not force:
-        cached = db.get_document_summary(base, name)
+        cached = db.get_document_summary(base, name, kind)
         if cached:
             def gen_cached():
                 yield _sse("meta", {"chunks": cached.get("chunks", 0), "truncated": False,
-                                    "cached": True, "created_at": cached.get("created_at")})
+                                    "cached": True, "kind": kind,
+                                    "created_at": cached.get("created_at")})
                 yield _sse("token", {"t": cached["summary"]})
                 yield _sse("done", {"cached": True})
             return StreamingResponse(gen_cached(), media_type="text/event-stream",
@@ -731,12 +735,14 @@ async def document_summary(request: Request, base: str, file: str, force: int = 
             yield _sse("error", {"message": "Aucun extrait indexé pour ce document."})
             yield _sse("done", {})
             return
-        _, truncated = rag.build_summary_prompt(name, payloads)
-        yield _sse("meta", {"chunks": len(payloads), "truncated": truncated, "cached": False})
+        truncated = False if kind == "long" else rag.build_summary_prompt(name, payloads)[1]
+        yield _sse("meta", {"chunks": len(payloads), "truncated": truncated,
+                            "cached": False, "kind": kind})
         parts = []
+        gen_fn = rag.summarize_long_stream if kind == "long" else rag.summarize_stream
         coordinator.query_begin()      # priorité requête : l'indexation cède le pas
         try:
-            for tok in rag.summarize_stream(name, payloads):
+            for tok in gen_fn(name, payloads):
                 parts.append(tok)
                 yield _sse("token", {"t": tok})
         except Exception as exc:
@@ -748,7 +754,7 @@ async def document_summary(request: Request, base: str, file: str, force: int = 
         summary = "".join(parts).strip()
         if summary:  # enregistrement pour réutilisation (évite de recalculer)
             db.save_document_summary(base, name, summary, settings.LLM_MODEL,
-                                     len(payloads), user["username"])
+                                     len(payloads), user["username"], kind=kind)
         yield _sse("done", {"saved": bool(summary)})
 
     return StreamingResponse(gen(), media_type="text/event-stream",

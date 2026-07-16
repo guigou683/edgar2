@@ -105,6 +105,9 @@ SUMMARY_SYSTEM = (
 
 # Budget de caractères transmis au LLM (garde-fou contexte pour un modèle 7B).
 SUMMARY_MAX_CHARS = 12000
+# Résumé « long » (map-reduce) : taille d'un segment et plafond du nombre de segments.
+SUMMARY_LONG_SEGMENT = 8000
+SUMMARY_LONG_MAX_SEGMENTS = 15
 
 
 def build_summary_prompt(filename: str, payloads: list[dict[str, Any]]) -> tuple[str, bool]:
@@ -139,3 +142,52 @@ def summarize_stream(filename: str, payloads: list[dict[str, Any]],
     """Génère en streaming la synthèse d'un document à partir de ses extraits."""
     prompt, _ = build_summary_prompt(filename, payloads)
     yield from llm.generate_stream(prompt, system=SUMMARY_SYSTEM, model=model)
+
+
+def _summary_segments(payloads: list[dict[str, Any]]) -> list[str]:
+    """Découpe les extraits (dans l'ordre) en segments bornés pour le map-reduce."""
+    segs: list[str] = []
+    cur: list[str] = []
+    curlen = 0
+    for p in payloads:
+        t = (p.get("text") or "").strip()
+        if not t:
+            continue
+        page = p.get("page")
+        block = (f"[p.{page}] " if page else "") + t
+        if curlen + len(block) > SUMMARY_LONG_SEGMENT and cur:
+            segs.append("\n\n".join(cur))
+            cur, curlen = [], 0
+            if len(segs) >= SUMMARY_LONG_MAX_SEGMENTS:
+                break
+        cur.append(block)
+        curlen += len(block)
+    if cur and len(segs) < SUMMARY_LONG_MAX_SEGMENTS:
+        segs.append("\n\n".join(cur))
+    return segs
+
+
+def summarize_long_stream(filename: str, payloads: list[dict[str, Any]],
+                          model: str | None = None) -> Iterator[str]:
+    """Résumé « long » couvrant tout le document (map-reduce) : on résume chaque
+    segment (map), puis on fusionne les résumés partiels en une synthèse finale
+    streamée (reduce). Sur un document tenant en un seul segment, équivaut au résumé simple."""
+    segs = _summary_segments(payloads)
+    if len(segs) <= 1:
+        yield from summarize_stream(filename, payloads, model=model)
+        return
+    partials: list[str] = []
+    for i, seg in enumerate(segs, 1):
+        prompt = (f"Document « {filename} » — partie {i}/{len(segs)}.\n\n"
+                  f"Extraits :\n{seg}\n\n"
+                  "Résume fidèlement cette partie en français (points clés), "
+                  "uniquement d'après ces extraits.")
+        partials.append(llm.generate(prompt, system=SUMMARY_SYSTEM, model=model))
+    combined = "\n\n".join(f"[Partie {i}] {p.strip()}" for i, p in enumerate(partials, 1))
+    final_prompt = (
+        f"Document « {filename} ».\n\n"
+        f"Résumés partiels des différentes parties du document :\n{combined}\n\n"
+        "À partir de ces résumés partiels, rédige UNE synthèse structurée et fidèle de "
+        "l'ensemble du document en français (objet, points clés, éléments notables). "
+        "Fais une synthèse cohérente, sans répéter les parties une à une.")
+    yield from llm.generate_stream(final_prompt, system=SUMMARY_SYSTEM, model=model)

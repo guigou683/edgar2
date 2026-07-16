@@ -23,13 +23,9 @@ def export_base(bid: str) -> None:
         print(f"base introuvable : {bid}", file=sys.stderr)
         sys.exit(1)
     docs = db.list_documents(bid)
-    # Résumés de documents (mis en cache) : transférés avec la base pour ne pas
-    # les perdre à la synchro. Récupérés par fichier (pas de fonction de liste).
-    summaries = []
-    for d in docs:
-        s = db.get_document_summary(bid, d["filename"])
-        if s:
-            summaries.append(s)
+    # Résumés de documents (court + long) : transférés avec la base pour ne pas
+    # les perdre à la synchro.
+    summaries = db.list_document_summaries(bid)
     json.dump({"base": b, "documents": docs, "summaries": summaries},
               sys.stdout, ensure_ascii=False)
 
@@ -53,7 +49,8 @@ def import_base() -> None:
     for s in data.get("summaries", []):
         try:
             db.save_document_summary(b["id"], s["filename"], s["summary"],
-                                     s.get("model"), s.get("chunks") or 0, s.get("created_by"))
+                                     s.get("model"), s.get("chunks") or 0, s.get("created_by"),
+                                     kind=s.get("kind", "short"))
             s_n += 1
         except Exception:
             pass
