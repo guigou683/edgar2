@@ -212,6 +212,18 @@ def set_max_sessions(value: Any) -> int:
     return v
 
 
+def get_keep_loaded() -> bool:
+    """Vrai (défaut) = ne pas décharger automatiquement les modèles : `keep_alive`
+    illimité envoyé à Ollama, les modèles restent résidents entre les requêtes."""
+    return db.get_setting("keep_models_loaded") != "0"
+
+
+def set_keep_loaded(value: Any) -> bool:
+    on = value is True or str(value).strip().lower() in ("1", "on", "true", "oui")
+    db.set_setting("keep_models_loaded", "1" if on else "0")
+    return on
+
+
 def get_gpu_vram() -> str:
     return db.get_setting(_VRAM_KEY) or ""
 

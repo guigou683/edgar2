@@ -92,6 +92,9 @@
         <input type="text" name="ollama_url" value="{{ ollama_url }}" placeholder="{{ ollama_url_default }}" autocomplete="off"></label>
       <p class="help">En cours : <b>{{ ollama_url_effective }}</b> — {{ installed | length }} modèle(s) détecté(s).</p>
 
+      <label class="inline"><input type="checkbox" name="keep_loaded" {% if keep_loaded %}checked{% endif %}> Ne pas décharger les modèles automatiquement
+        {{ ui.info("Garde les modèles chargés en mémoire entre les requêtes (keep_alive illimité). Recommandé quand la VRAM est abondante ou avec un serveur Ollama distant puissant : évite les rechargements lents à froid (~1 min). À décocher sur une machine à faible VRAM où les modèles doivent se relayer (bascule bge-m3 ↔ LLM de génération).") }}</label>
+
       <div><button class="btn-mini" type="submit">Enregistrer les défauts</button></div>
     </form>
   </div>

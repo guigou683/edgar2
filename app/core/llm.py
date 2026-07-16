@@ -33,6 +33,17 @@ def _ollama_url() -> str:
     return settings.OLLAMA_URL
 
 
+def _keep_alive():
+    """Valeur `keep_alive` envoyée à Ollama. Illimité (-1) par défaut pour éviter
+    les rechargements à froid ; utile surtout avec un Ollama distant, dont le défaut
+    (~5 min) ne dépend pas du compose local. Réglable en admin (« ne pas décharger »)."""
+    try:
+        from core import appsettings
+        return -1 if appsettings.get_keep_loaded() else "30m"
+    except Exception:
+        return -1
+
+
 def embed_texts(texts: list[str], model: str | None = None, progress=None,
                 before_batch=None) -> list[list[float]]:
     """Calcule les embeddings denses d'une liste de textes, par lots de 32.
@@ -45,6 +56,7 @@ def embed_texts(texts: list[str], model: str | None = None, progress=None,
     model = model or settings.EMBED_MODEL
     total = len(texts)
     url = _ollama_url()
+    ka = _keep_alive()
     out: list[list[float]] = []
     with httpx.Client(timeout=EMBED_TIMEOUT) as client:
         for i in range(0, total, EMBED_BATCH):
@@ -55,7 +67,7 @@ def embed_texts(texts: list[str], model: str | None = None, progress=None,
             for attempt in range(EMBED_RETRIES + 1):
                 try:
                     r = client.post(f"{url}/api/embed",
-                                    json={"model": model, "input": batch})
+                                    json={"model": model, "input": batch, "keep_alive": ka})
                     r.raise_for_status()
                     out.extend(r.json()["embeddings"])
                     last_exc = None
@@ -97,7 +109,8 @@ def preload(model: str | None = None) -> None:
     fois le modèle prêt. Utilisé pour matérialiser l'étape « Chargement du modèle »."""
     model = model or settings.LLM_MODEL
     with httpx.Client(timeout=180.0) as client:
-        r = client.post(f"{_ollama_url()}/api/generate", json={"model": model})
+        r = client.post(f"{_ollama_url()}/api/generate",
+                        json={"model": model, "keep_alive": _keep_alive()})
         r.raise_for_status()
 
 
@@ -182,7 +195,7 @@ def generate(prompt: str, system: str | None = None, model: str | None = None,
     """Génération non-streamée (utilisée pour la reformulation)."""
     model = model or settings.LLM_MODEL
     payload = {"model": model, "prompt": prompt, "stream": False,
-               "options": {"temperature": temperature}}
+               "keep_alive": _keep_alive(), "options": {"temperature": temperature}}
     if system:
         payload["system"] = system
     with httpx.Client(timeout=120.0) as client:
@@ -196,7 +209,7 @@ def generate_stream(prompt: str, system: str | None = None, model: str | None = 
     """Génération en streaming : produit les jetons au fil de l'eau (pour SSE)."""
     model = model or settings.LLM_MODEL
     payload = {"model": model, "prompt": prompt, "stream": True,
-               "options": {"temperature": temperature}}
+               "keep_alive": _keep_alive(), "options": {"temperature": temperature}}
     if system:
         payload["system"] = system
     with httpx.Client(timeout=300.0) as client:

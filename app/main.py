@@ -1101,6 +1101,7 @@ async def admin_models(request: Request):
         "concurrency_policy": appsettings.get_concurrency_policy(),
         "max_queries": appsettings.get_max_queries(),
         "max_sessions": appsettings.get_max_sessions(),
+        "keep_loaded": appsettings.get_keep_loaded(),
     })
 
 
@@ -1132,6 +1133,7 @@ async def admin_models_save(request: Request):
             appsettings.set_max_queries(form.get("max_queries"))
         if form.get("max_sessions") is not None:
             appsettings.set_max_sessions(form.get("max_sessions"))
+        appsettings.set_keep_loaded(form.get("keep_loaded") == "on")
         db.insert_audit("settings_update", user["id"], user["username"],
                         client_ip(request), _ua(request), "")
     return RedirectResponse("/admin/models", status_code=303)
