@@ -58,9 +58,143 @@ class App(tk.Tk):
                    command=self._show_sync).pack(anchor="w", pady=6)
 
     def _show_install(self) -> None:
-        messagebox.showinfo("Installer",
-                            "L'assistant d'installation arrive au prochain lot (C).\n"
-                            "La synchronisation est déjà disponible.")
+        self._clear()
+        top = ttk.Frame(self.container, padding=(12, 10))
+        top.pack(fill="x")
+        ttk.Button(top, text="← Accueil", command=self._show_home).pack(side="left")
+        ttk.Label(top, text="Installer un poste",
+                  font=("TkDefaultFont", 13, "bold")).pack(side="left", padx=12)
+
+        self.logbox = scrolledtext.ScrolledText(self.container, height=8, state="disabled",
+                                                font=("TkFixedFont", 9))
+        self.logbox.pack(side="bottom", fill="x", padx=12, pady=(4, 12))
+        self._progress = ttk.Progressbar(self.container, mode="indeterminate")
+        self._progress.pack(side="bottom", fill="x", padx=12, pady=(6, 0))
+
+        body = ttk.Frame(self.container, padding=12)
+        body.pack(fill="both", expand=True)
+
+        # Pré-requis
+        fp = ttk.LabelFrame(body, text="Pré-requis (Docker requis, jamais installé par l'outil)",
+                            padding=8)
+        fp.pack(fill="x", **PAD)
+        self.inst_prereq = ttk.Label(fp, text="non vérifié")
+        self.inst_prereq.pack(side="left")
+        ttk.Button(fp, text="Vérifier", command=self._check_prereqs_ui).pack(side="right")
+
+        # Bundle
+        fb = ttk.LabelFrame(body, text="Bundle d'installation (disque)", padding=8)
+        fb.pack(fill="x", **PAD)
+        row = ttk.Frame(fb)
+        row.pack(fill="x")
+        self.inst_src = tk.StringVar()
+        ttk.Entry(row, textvariable=self.inst_src).pack(side="left", fill="x", expand=True)
+        ttk.Button(row, text="Parcourir…",
+                   command=lambda: self._pick_dir(self.inst_src)).pack(side="left", padx=4)
+        ttk.Button(row, text="Analyser", command=self._analyse_install).pack(side="left")
+        self.inst_detected = ttk.Label(fb, text="—", foreground="#555")
+        self.inst_detected.pack(anchor="w", pady=(6, 0))
+        self._inst_info: dict = {"app": False, "models": [], "bases": []}
+
+        # À installer
+        fo = ttk.LabelFrame(body, text="À installer", padding=8)
+        fo.pack(fill="x", **PAD)
+        self.inst_images = tk.BooleanVar(value=True)
+        self.inst_code = tk.BooleanVar(value=False)
+        self.inst_models = tk.BooleanVar(value=True)
+        self.inst_bases = tk.BooleanVar(value=True)
+        ttk.Checkbutton(fo, text="Charger les images Docker", variable=self.inst_images).pack(anchor="w")
+        ttk.Checkbutton(fo, text="Remplacer aussi le code (préserve .env)",
+                        variable=self.inst_code).pack(anchor="w", padx=20)
+        ttk.Checkbutton(fo, text="Installer les modèles", variable=self.inst_models).pack(anchor="w")
+        ttk.Checkbutton(fo, text="Importer les bases du bundle", variable=self.inst_bases).pack(anchor="w")
+
+        # Configuration
+        fc = ttk.LabelFrame(body, text="Configuration", padding=8)
+        fc.pack(fill="x", **PAD)
+        self.inst_host = tk.StringVar(value="localhost")
+        self.inst_admin = tk.StringVar(value="admin")
+        self.inst_pwd = tk.StringVar()
+        for label, var, kw in (("Nom ou IP du serveur (certificat) :", self.inst_host, {}),
+                               ("Identifiant admin :", self.inst_admin, {}),
+                               ("Mot de passe admin :", self.inst_pwd, {"show": "•"})):
+            r = ttk.Frame(fc)
+            r.pack(fill="x", pady=2)
+            ttk.Label(r, text=label, width=32).pack(side="left")
+            ttk.Entry(r, textvariable=var, **kw).pack(side="left", fill="x", expand=True)
+
+        bar = ttk.Frame(body)
+        bar.pack(fill="x", **PAD)
+        self.inst_run = ttk.Button(bar, text="Lancer l'installation", command=self._do_install)
+        self.inst_run.pack(side="right")
+
+        self._check_prereqs_ui()
+
+    def _check_prereqs_ui(self) -> None:
+        def work(_log):
+            self._q.put(("__prereqs__", core.check_prereqs()))
+        self._run_bg(work)
+
+    def _show_prereqs(self, res: dict) -> None:
+        if not getattr(self, "inst_prereq", None) or not self.inst_prereq.winfo_exists():
+            return
+        ok = res["docker"] and res["compose"]
+        mark = lambda b: "✔" if b else "✗"
+        self.inst_prereq.config(
+            text=f"Docker {mark(res['docker'])}   Compose {mark(res['compose'])}   "
+                 f"GPU {'✔' if res['gpu'] else '— (mode CPU)'}",
+            foreground="#0a6" if ok else "#c00")
+
+    def _analyse_install(self) -> None:
+        src = self.inst_src.get().strip()
+        if not src or not Path(src).is_dir():
+            messagebox.showwarning("Installation", "Choisis un dossier de bundle valide.")
+            return
+        self._inst_info = core.detect_bundle(src)
+        self.inst_detected.config(
+            text=f"Application : {'oui' if self._inst_info['app'] else 'non'}   ·   "
+                 f"modèles : {len(self._inst_info['models'])}   ·   "
+                 f"bases : {len(self._inst_info['bases'])}")
+
+    def _do_install(self) -> None:
+        src = Path(self.inst_src.get().strip())
+        host = self.inst_host.get().strip() or "localhost"
+        admin = self.inst_admin.get().strip()
+        pwd = self.inst_pwd.get()
+        if not admin or not pwd:
+            messagebox.showwarning("Installation", "Identifiant et mot de passe admin requis.")
+            return
+        info = self._inst_info
+
+        def work(log):
+            res = core.check_prereqs(log)
+            if not res["docker"] or not res["compose"]:
+                raise RuntimeError("Docker/compose introuvable — installez Docker puis relancez.")
+            log("== Configuration (.env) ==")
+            core.ensure_env_secret(log)
+            if self.inst_images.get():
+                log("== Images / code ==")
+                core.import_app(src / "app", replace_code=self.inst_code.get(), log=log)
+            else:
+                core.compose_up(log)
+            if self.inst_models.get():
+                log("== Modèles ==")
+                core.import_models(src / "models", log=log)
+            if self.inst_bases.get():
+                for bid in info.get("bases", []):
+                    log(f"== Base {bid} ==")
+                    core.import_base(src / "docs" / bid, log=log)
+            log("== Certificat ==")
+            core.gen_cert(host, log=log)
+            log("== Attente de la disponibilité ==")
+            core.wait_healthy(log)
+            log("== Compte administrateur ==")
+            log(core.bootstrap_admin(admin, pwd, log).strip())
+            log(f"Terminé. Accès : https://{host}:8443")
+
+        msg = (f"Installation terminée.\n\nAccès : https://{host}:8443\n"
+               "Le mot de passe admin devra être changé au 1er login.")
+        self._run_bg(work, self.inst_run, done_title="Installation", done_message=msg)
 
     # ---- écran synchronisation ----
     def _show_sync(self) -> None:
@@ -149,6 +283,8 @@ class App(tk.Tk):
         self._run_bg(work)
 
     def _populate_lists(self, bases, models) -> None:
+        if not self.exp_bases_box.winfo_exists():
+            return
         for w in self.exp_bases_box.winfo_children():
             w.destroy()
         self.exp_bases_vars.clear()
@@ -291,7 +427,8 @@ class App(tk.Tk):
     def log(self, msg: str) -> None:
         self._q.put(str(msg))
 
-    def _run_bg(self, fn, button: ttk.Button | None = None, done_title: str | None = None) -> None:
+    def _run_bg(self, fn, button: ttk.Button | None = None, done_title: str | None = None,
+                done_message: str | None = None) -> None:
         if self._busy:
             messagebox.showinfo("Occupé", "Une opération est déjà en cours.")
             return
@@ -309,7 +446,7 @@ class App(tk.Tk):
                 ok, err = False, f"{type(exc).__name__} : {exc}"
                 self.log("ERREUR : " + err)
             finally:
-                self._q.put(("__done__", button, done_title, ok, err))
+                self._q.put(("__done__", button, done_title, ok, err, done_message))
 
         threading.Thread(target=wrap, daemon=True).start()
 
@@ -318,7 +455,7 @@ class App(tk.Tk):
             while True:
                 item = self._q.get_nowait()
                 if isinstance(item, tuple) and item and item[0] == "__done__":
-                    _, btn, title, ok, err = item
+                    _, btn, title, ok, err, msg = item
                     self._busy = False
                     if hasattr(self, "_progress"):
                         self._progress.stop()
@@ -326,11 +463,13 @@ class App(tk.Tk):
                         btn.config(state="normal")
                     if title:
                         if ok:
-                            messagebox.showinfo(title, f"{title} terminé.")
+                            messagebox.showinfo(title, msg or f"{title} terminé.")
                         else:
                             messagebox.showerror(title, f"{title} : échec.\n{err}")
                 elif isinstance(item, tuple) and item and item[0] == "__lists__":
                     self._populate_lists(item[1], item[2])
+                elif isinstance(item, tuple) and item and item[0] == "__prereqs__":
+                    self._show_prereqs(item[1])
                 elif hasattr(self, "logbox"):
                     self.logbox.config(state="normal")
                     self.logbox.insert("end", str(item) + "\n")
