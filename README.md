@@ -182,7 +182,7 @@ edgar2/
 
 ## Crédits
 
-Développé par le **guigou6** et **CoewZelyr**
+Développé par **guigou6** et **CoewZelyr**
 — page « À propos » dans l'application.
 
 © Marine nationale 2026 — Tous droits réservés.
