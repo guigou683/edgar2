@@ -5,8 +5,9 @@
 /qdrant/
 .env
 
-# --- Assets binaires vendus localement (transférés hors-ligne, pas dans Git) ---
-app/static/vendor/*.js
+# --- Assets binaires locaux (fonts/icons éventuels, non versionnés) ---
+# Les libs JS tierces (app/static/vendor/*.js) SONT versionnées : dépôt autonome,
+# reproductible et 100 % hors-ligne (aucun CDN).
 app/static/fonts/*
 app/static/icons/*
 

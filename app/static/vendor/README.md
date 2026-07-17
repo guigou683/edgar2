@@ -1,10 +1,9 @@
 # Assets tiers vendus localement (offline, aucun CDN)
 
-Ces fichiers sont **pré-téléchargés sur un poste connecté, figés, puis transférés**.
-Ils ne sont **pas versionnés** dans Git (voir `.gitignore`) : ils sont déposés ici
-lors de la préparation de l'image / du paquet hors-ligne.
+Ces fichiers sont **figés et versionnés dans le dépôt** : aucune dépendance à un CDN,
+aucun accès réseau à l'exécution, et un `git clone` produit une application complète.
 
-Fichiers attendus (déposés par `scripts/export_offline.sh`) :
+Fichiers vendus :
 
 | Fichier            | Version cible | Rôle                                  |
 |--------------------|---------------|---------------------------------------|
