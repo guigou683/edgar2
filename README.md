@@ -4,7 +4,7 @@ Système **RAG auto-hébergé, souverain et 100 % hors-ligne** : interroger de l
 documentation technique et obtenir des réponses **en français, synthétiques,
 sourcées et vérifiables**. Aucune donnée ne sort du réseau local.
 
-> Version courante : **1.2.0** — voir [CHANGELOG.md](CHANGELOG.md).
+> Version : voir [CHANGELOG.md](CHANGELOG.md).
 
 ---
 
@@ -48,15 +48,19 @@ Quatre services conteneurisés (Docker Compose) :
 ## Fonctionnalités
 
 - **Chat** en streaming token par token, rendu Markdown, coloration de code, bloc
-  **Sources** dépliable, **aperçu PDF** positionné sur la page citée, téléchargement.
+  **Sources** dépliable, **aperçu PDF** positionné sur la page citée, téléchargement ;
+  historique par base et **conversations renommables**.
 - **Multi-bases** cloisonnées (un « chatbot » par base), stratégie de parsing par base.
+- **Mention de classification** : bandeau permanent dans la barre latérale
+  (**Non protégé** par défaut, **Diffusion Restreinte** ou **Secret**, option *Special France*).
 - **Panneau de réglages** (⚙️) par session : préréglages **⚡ Rapide / 🎯 Précis** et
   leviers fins (mode hybride/IA/lexicale, re-prompt, reranking, top-k, seuil, etc.),
   avec info-bulles ; défauts globaux réglables par l'admin.
 - **Gestion des documents** : recherche filtrée à la frappe et consultation (tous les
-  rôles) ; import (fichiers ou dossier serveur) **en tâche de fond** avec progression
-  dynamique, raison précise des échecs et choix de stratégie (rapide / OCR) ;
-  suppression, ré-analyse, relance des échecs, statistiques (contributeur / admin).
+  rôles) ; **résumé LLM** par document (aperçu court ou **résumé long** couvrant tout le
+  document) ; import (fichiers ou dossier serveur) **en tâche de fond** avec progression
+  dynamique, raison précise des échecs, choix de stratégie (rapide / OCR) et **formats non
+  supportés ignorés** proprement ; suppression, ré-analyse, relance des échecs, statistiques.
 - **Administration** : santé du système, **supervision GPU/CPU** (VRAM allouée par
   modèle), gestion des bases, des comptes et des rôles, réglages globaux, journaux
   d'audit (export CSV).
@@ -116,9 +120,9 @@ Accès : **https://<hôte>:8443**
 
 ## Fonctionnement hors-ligne
 
-Tous les artefacts (images, modèles, polices, JS/CSS) sont pré-téléchargés puis
-transférés. Aucun CDN ; `HF_HUB_OFFLINE=1` au runtime. La préparation se fait en
-deux temps sur un **poste connecté** :
+Aucun CDN : les libs JS/CSS tierces sont **versionnées dans le dépôt** ; images Docker
+et modèles sont pré-téléchargés puis transférés ; `HF_HUB_OFFLINE=1` au runtime. La
+préparation se fait en deux temps sur un **poste connecté** :
 
 ```bash
 # 1) Docker + ses dépendances pour la machine cible (Windows / Debian / RHEL)
@@ -133,9 +137,9 @@ Sur la machine hors-ligne : installer Docker, `docker load` des images, restaure
 dossiers `./ollama` et `./qdrant`, puis `docker compose up -d`. Le **pilote NVIDIA**
 (GPU) reste à récupérer manuellement (il dépend du matériel et de l'OS).
 
-**Vérification** (`scripts/verify_offline.sh`) : chargement des modèles sous
-`--network none`, puis pipeline complet (ingestion, recherche, reranking, génération)
-et HTTPS sur un réseau **sans aucune sortie Internet**.
+**Vérification** (`scripts/verify_offline.sh`) : BM25 + reranker chargés sous
+`--network none`, puis pipeline (ingestion → embeddings → recherche hybride) et HTTPS
+sur un réseau interne **sans aucune sortie Internet**.
 
 ### Console d'exploitation (installation & synchronisation)
 
@@ -168,7 +172,7 @@ edgar2/
     main.py                   # FastAPI : routes, SSE, sécurité
     core/                     # config, auth, db, bases, ingest, importer, parsers,
                               #   vectorstore, sparse, keywords, rerank, llm, retrieval, rag
-    templates/  static/       # Jinja2 + CSS/JS vanilla (assets vendus localement)
+    templates/  static/       # Jinja2 + CSS/JS vanilla ; static/vendor/ = libs tierces versionnées
   scripts/                    # bootstrap admin, gen_cert, download_docker, export/verify offline, _sync
   tools/edgar_ops/            # console Tkinter (hôte) : installation + synchro terre↔mer
   CHANGELOG.md
