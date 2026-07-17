@@ -224,6 +224,44 @@ def set_keep_loaded(value: Any) -> bool:
     return on
 
 
+# --- Mention de classification (bandeau permanent) ---------------------------
+CLASSIFICATIONS = ("non_protege", "diffusion_restreinte", "secret")
+CLASSIFICATION_IMG = {
+    "non_protege": "non-protege.svg",
+    "diffusion_restreinte": "diffusion-restreinte.svg",
+    "secret": "secret.svg",
+}
+
+
+def get_classification() -> str:
+    """Mention de classification courante (défaut : non protégé)."""
+    v = db.get_setting("classification")
+    return v if v in CLASSIFICATIONS else "non_protege"
+
+
+def set_classification(value: Any) -> str:
+    v = str(value or "").strip()
+    v = v if v in CLASSIFICATIONS else "non_protege"
+    db.set_setting("classification", v)
+    if v == "non_protege":                     # « Special France » interdit sur non protégé
+        db.set_setting("special_france", "0")
+    return v
+
+
+def get_special_france() -> bool:
+    """Mention « Special France » : jamais sur « non protégé »."""
+    if get_classification() == "non_protege":
+        return False
+    return db.get_setting("special_france") == "1"
+
+
+def set_special_france(value: Any) -> bool:
+    allowed = get_classification() != "non_protege"
+    on = allowed and (value is True or str(value).strip().lower() in ("1", "on", "true", "oui"))
+    db.set_setting("special_france", "1" if on else "0")
+    return on
+
+
 def get_gpu_vram() -> str:
     return db.get_setting(_VRAM_KEY) or ""
 

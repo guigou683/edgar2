@@ -31,6 +31,13 @@
 
       {% block sidebar_bottom %}{% endblock %}
 
+      {% if classif_img %}
+      <div class="classif-marking" aria-label="Mention de classification">
+        <img class="classif-banner" src="/static/img/classif/{{ classif_img }}?v={{ asset_v }}" alt="Mention de classification">
+        {% if special_france %}<img class="classif-banner" src="/static/img/classif/special-france.svg?v={{ asset_v }}" alt="Special France">{% endif %}
+      </div>
+      {% endif %}
+
       {% if user %}
       <div class="account">
         <div class="account-name">{{ user.username }}</div>

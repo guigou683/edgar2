@@ -309,6 +309,19 @@ document.addEventListener("DOMContentLoaded", () => {
     }
   });
 
+  // --- Classification : « Special France » indisponible sur « Non protégé » ---
+  const classifSel = document.querySelector("[data-classif-select]");
+  const sfCheck = document.querySelector("[data-sf-check]");
+  if (classifSel && sfCheck) {
+    const syncSF = () => {
+      const np = classifSel.value === "non_protege";
+      sfCheck.disabled = np;
+      if (np) sfCheck.checked = false;
+    };
+    classifSel.addEventListener("change", syncSF);
+    syncSF();
+  }
+
   // --- Panneau d'expérimentation ---
   const panel = document.querySelector("[data-panel]");
   const chat = document.querySelector(".chat");

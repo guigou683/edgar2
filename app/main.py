@@ -89,7 +89,11 @@ def _csrf_nonce(request: Request) -> str:
 def _render_with_csrf(request: Request, template: str, ctx: dict):
     """Rend un gabarit en injectant un jeton CSRF et en (re)posant le cookie nonce."""
     nonce = _csrf_nonce(request)
-    ctx = {**ctx, "request": request, "csrf_token": make_csrf_token(nonce)}
+    _classif = appsettings.get_classification()
+    ctx = {**ctx, "request": request, "csrf_token": make_csrf_token(nonce),
+           "classification": _classif,
+           "classif_img": appsettings.CLASSIFICATION_IMG[_classif],
+           "special_france": appsettings.get_special_france()}
     response = templates.TemplateResponse(template, ctx)
     _set_cookie(response, CSRF_COOKIE, nonce, max_age=3600)
     return response
@@ -1163,6 +1167,22 @@ async def admin_models_save(request: Request):
         appsettings.set_keep_loaded(form.get("keep_loaded") == "on")
         db.insert_audit("settings_update", user["id"], user["username"],
                         client_ip(request), _ua(request), "")
+    return RedirectResponse("/admin/models", status_code=303)
+
+
+@app.post("/admin/classification")
+async def admin_classification_save(request: Request, classification: str = Form("non_protege"),
+                                    special_france: str = Form(""), csrf_token: str = Form(...)):
+    """Enregistre la mention de classification (bandeau) + « Special France »."""
+    user, resp = _guard(request, auth.ROLE_ADMIN)
+    if resp:
+        return resp
+    if _check_csrf(request, csrf_token):
+        appsettings.set_classification(classification)
+        appsettings.set_special_france(special_france == "on")
+        db.insert_audit("classification_update", user["id"], user["username"],
+                        client_ip(request), _ua(request),
+                        f"{appsettings.get_classification()} sf={appsettings.get_special_france()}")
     return RedirectResponse("/admin/models", status_code=303)
 
 

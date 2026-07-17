@@ -59,6 +59,8 @@ a:hover { color: var(--or); }
   border-radius: var(--radius); cursor: pointer; font-size: 14px;
 }
 .btn-new:hover { background: var(--marine); }
+.classif-marking { display: flex; flex-direction: column; gap: 6px; margin-bottom: 12px; }
+.classif-banner { display: block; width: 100%; height: auto; }
 .account { border-top: 1px solid var(--border); padding-top: 12px; }
 .account-name { font-weight: 600; }
 .account-role { color: var(--text-muted); font-size: 12px; text-transform: capitalize; }

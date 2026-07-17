@@ -35,6 +35,24 @@
   </div>
 
   <div class="admin-card">
+    <h2>Mention de classification (bandeau)
+      {{ ui.info("Bandeau affiché en permanence dans la barre de gauche, sur toutes les pages. « Special France » ne s'associe qu'à Secret ou Diffusion Restreinte.") }}</h2>
+    <form class="admin-form" method="post" action="/admin/classification">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+      <label>Mention de classification
+        <select name="classification" data-classif-select>
+          <option value="non_protege" {% if classification=='non_protege' %}selected{% endif %}>Non protégé</option>
+          <option value="diffusion_restreinte" {% if classification=='diffusion_restreinte' %}selected{% endif %}>Diffusion Restreinte</option>
+          <option value="secret" {% if classification=='secret' %}selected{% endif %}>Secret</option>
+        </select>
+      </label>
+      <label class="inline"><input type="checkbox" name="special_france" data-sf-check {% if special_france %}checked{% endif %}> Special France
+        {{ ui.info("Associable uniquement à Secret ou Diffusion Restreinte (indisponible sur « Non protégé »).") }}</label>
+      <div><button class="btn-mini" type="submit">Enregistrer la classification</button></div>
+    </form>
+  </div>
+
+  <div class="admin-card">
     <h2>Réglages de recherche par défaut (globaux)
       {{ ui.info("Ces valeurs s'appliquent à toutes les requêtes, sauf surcharge par session.") }}</h2>
     <form class="admin-form" method="post" action="/admin/models/save">
