@@ -5,24 +5,45 @@ versionnage [SemVer](https://semver.org/lang/fr/).
 
 Les versions **0.1.0 → 0.9.0** sont des **pré-releases** (développement incrémental,
 une par brique). Les versions **1.x** sont **stables** (1.0.0 = application complète
-initiale ; version courante mise en avant = la plus récente). La **2.0.0** est prévue
-une fois le fonctionnement **hors-ligne validé en conditions réelles sur un volume
-important de fichiers**.
+initiale). La **2.0.0** acte le fonctionnement **hors-ligne validé en conditions réelles**
+et l'outillage de déploiement/synchronisation associé.
 
 > Ces résumés sont un point de départ — à ajuster librement selon les besoins.
 
-## [2.0.0] — prévue
-- Validation hors-ligne en conditions réelles sur un **corpus volumineux** (perfs,
-  qualité de récupération, robustesse ingestion à l'échelle).
+## [À venir]
+- Enrichissement LLM des mots-clés à l'ingestion (option par base), viewer PDF inline
+  plus poussé, optimisations mémoire/VRAM.
+
+## [2.0.0] — 2026-07-16 — hors-ligne validé, console d'exploitation & durcissement
+
+Première version **stable 2.x** : fonctionnement hors-ligne éprouvé en conditions réelles,
+outillage de déploiement et de synchronisation, et correctifs issus du premier test terrain.
+
+### Ajouté
 - **Console d'exploitation** (`tools/edgar_ops/`, Tkinter, sans `sudo`) : **installation**
-  assistée et **synchronisation terre↔mer** (bases, documents, index Qdrant, modèles). Les
-  **comptes restent locaux** (jamais transférés) ; l'archive de code exclut `.env` ; les
-  résumés de documents sont transférés avec leur base. Remplace `scripts/edgar_sync.sh`.
-  Dépendance poste opérateur : `python3-tk`.
-- Pistes restantes : correctifs du test hors-ligne (timeout upsert Qdrant sur très gros
-  fichiers, `keep_alive` explicite pour Ollama distant, renommage des conversations,
-  formats non supportés ignorés proprement, résumé long en map-reduce), enrichissement LLM
-  des mots-clés à l'ingestion (option par base), viewer PDF inline plus poussé, optimisations mémoire/VRAM.
+  assistée d'un poste et **synchronisation terre↔mer** (bases, documents, index Qdrant,
+  modèles) depuis un disque. Les **comptes restent locaux** (jamais transférés) ; l'archive
+  de code exclut `.env`. Remplace `scripts/edgar_sync.sh`. Dépendance : `python3-tk`.
+- **Mention de classification** : bandeau permanent (barre de gauche, toutes les pages) —
+  Non protégé (défaut), Diffusion Restreinte ou Secret, avec option *Special France*.
+- **Résumé long** de document (map-reduce, couvre tout le document) en plus du résumé
+  court ; les deux sont mis en cache et transférés à la synchro.
+- **Renommer une conversation** depuis la barre latérale du chat.
+- Réglage **« ne pas décharger les modèles automatiquement »** (keep_alive illimité).
+
+### Corrigé
+- **Timeout d'indexation sur très gros fichiers** : upsert Qdrant découpé en lots.
+- **Modèles déchargés à tort avec un Ollama distant** : `keep_alive` explicite sur tous les
+  appels (le défaut serveur ~5 min ne s'applique plus).
+- **Formats non supportés** (mp4, zip…) désormais **ignorés** proprement (badge « ignoré »)
+  au lieu d'aboutir à un échec.
+- **Qdrant sur Docker Linux** : limite `nofile` relevée (« Too many open files »).
+
+### Modifié
+- **Dépôt autonome** : libs JS tierces (htmx, marked, dompurify, highlight) versionnées —
+  un clone produit une application complète, toujours 100 % hors-ligne.
+- Nettoyage : retrait de `HANDOFF.md` et de `tests/` (vérification hors-ligne rendue
+  autonome dans `verify_offline.sh`) ; README et documentation mis à jour.
 
 ## [1.2.0] — 2026-07-06 — stabilité, gestion documentaire & performances
 
