@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
-"""Aide base de données pour scripts/edgar_sync.sh — exécuté DANS le conteneur app
-(accès aux modules core + data/bases.json + registre SQLite).
+"""Aide base de données pour la console d'exploitation (tools/edgar_ops) — exécuté
+DANS le conteneur app (accès aux modules core + data/bases.json + registre SQLite).
 
   export-base <id>   : écrit {base, documents, summaries} en JSON sur stdout
   import-base        : lit ce JSON sur stdin, réinjecte la base (id conservé) + registre + résumés
