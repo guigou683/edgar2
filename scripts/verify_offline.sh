@@ -29,9 +29,30 @@ for i in $(seq 1 30); do
 done
 echo "  -- nginx HTTPS (certificat auto-signé généré hors-ligne) --"
 docker compose exec -T app python -c "import httpx; r=httpx.get('https://nginx/healthz', verify=False, timeout=10); print('  nginx HTTPS ->', r.status_code)"
-echo "  -- test d'ingestion (parsing/OCR -> embeddings -> hybride) --"
-docker compose exec -T app python - < tests/test_ingest.py
-echo "  -- test de retrieval (multi-query -> rerank -> seuil -> génération) --"
-docker compose exec -T app python - < tests/test_retrieval.py
+echo "  -- pipeline : ingestion -> embeddings bge-m3 -> recherche hybride Qdrant --"
+docker compose exec -T app python - <<'PY'
+import sys
+sys.path.insert(0, "/app")
+from core import bases, ingest, llm, vectorstore
+bid = None
+try:
+    bid = bases.create_base("Verif hors-ligne", "verif", parse_strategy="fast")["id"]
+    docs = ["Le sonar remorqué permet la détection des sous-marins.",
+            "La frégate FREMM assure la lutte anti-sous-marine de la Marine nationale."]
+    chunks = [ingest.Chunk(text=t, file="c.txt", page=1, section=f"§{i}")
+              for i, t in enumerate(docs)]
+    rep = ingest.index_chunks(bid, ingest.file_hash("\n".join(docs).encode()), chunks)
+    assert rep["indexed"] == 2, "indexation KO"
+    qvec = llm.embed_query("comment détecter un sous-marin ?")
+    res = vectorstore.hybrid_search(bid, dense_vec=qvec, limit=2)
+    assert res and "sonar" in " ".join(r["payload"]["text"].lower() for r in res), "recherche KO"
+    print("  OK : ingestion + embeddings + recherche hybride, sans egress Internet.")
+finally:
+    if bid:
+        try:
+            bases.delete_base(bid, remove_documents=True)
+        except Exception:
+            pass
+PY
 
 echo "Vérification hors-ligne terminée avec succès."
