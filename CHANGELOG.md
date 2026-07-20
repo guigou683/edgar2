@@ -45,6 +45,104 @@ outillage de déploiement et de synchronisation, et correctifs issus du premier 
 - Nettoyage : retrait de `HANDOFF.md` et de `tests/` (vérification hors-ligne rendue
   autonome dans `verify_offline.sh`) ; README et documentation mis à jour.
 
+## [1.3.14] — 2026-07-13 — correctif Qdrant sur Docker Linux
+- Limite de descripteurs de fichiers relevée (`ulimits.nofile`) sur le service Qdrant :
+  sur Docker Linux natif, le défaut faisait échouer le démarrage (« Too many open
+  files ») avec des collections volumineuses.
+
+## [1.3.13] — 2026-07-13 — synchronisation terre ↔ mer
+- Script interactif unique : rôle du poste (terre = export, mer = import), puis choix
+  des paquets — code + images Docker, modèles Ollama (export par manifeste et blobs),
+  données par base.
+- Transfert des collections Qdrant par **copie du dossier de stockage**, Qdrant arrêté
+  le temps de l'opération : remplace les instantanés HTTP, qui provoquaient des
+  corruptions à la restauration.
+
+## [1.3.12] — 2026-07-13 — page « Modèles & recherche » allégée
+- Explications et recommandations déplacées dans des info-bulles ; seules restent
+  visibles les informations d'état (ressources, recommandation, serveur Ollama courant).
+
+## [1.3.11] — 2026-07-13 — limites de charge
+- File d'attente des questions : au plus N traitées en parallèle, les suivantes
+  patientent (« En file d'attente… »). Protège le GPU de la saturation.
+- Plafond de sessions simultanées, contrôlé à la connexion ; les administrateurs
+  ne sont jamais bloqués.
+
+## [1.3.10] — 2026-07-13 — suppression de base au choix
+- À la suppression d'une base, option pour supprimer **aussi** le corpus sur disque
+  (par défaut : fichiers conservés).
+- Saisie de la VRAM déplacée dans la carte « Ressources machine ».
+- Page « Mon compte » centrée.
+
+## [1.3.9] — 2026-07-12 — coordination indexation ↔ requêtes
+- Nouveau module de coordination : sur GPU unique, l'indexation **cède le pas** aux
+  questions interactives (politique « priorité », par défaut) ; politique « parallèle »
+  pour machine puissante ou Ollama distant.
+- L'encart d'import signale « en pause (requête en cours) ».
+
+## [1.3.8] — 2026-07-12 — déchargement des modèles
+- Déchargement d'un modèle ou de tous (`keep_alive=0`) depuis le tableau de bord :
+  libère la VRAM/RAM, le modèle étant rechargé à la requête suivante.
+
+## [1.3.7] — 2026-07-10 — ressources machine & profil recommandé
+- Détection des cœurs CPU et de la RAM, calcul d'un **profil recommandé**
+  (parallélisme d'indexation, conseil de modèle selon la VRAM).
+- La VRAM n'étant pas détectable depuis le conteneur, elle est saisie par l'administrateur.
+- Bouton « Appliquer le profil ».
+
+## [1.3.6] — 2026-07-10 — serveur Ollama configurable
+- URL ou IP:port d'un Ollama **distant** du réseau local (vide = Ollama interne), pris
+  en compte immédiatement par les embeddings, la génération et la santé.
+- Cartes de paramétrage en pleine largeur ; colonnes d'actions alignées dans la
+  gestion des comptes.
+
+## [1.3.5] — 2026-07-09 — correction de la synchronisation du dossier
+- Comparaison sur le **chemin relatif complet** : un fichier déplacé en sous-dossier
+  est bien vu comme nouveau.
+- Purge des entrées dont le fichier a disparu du disque, et de leurs points d'index.
+
+## [1.3.4] — 2026-07-09 — page Documents scalable
+- Listing paginé et recherche/filtre côté serveur (HTML ~7 Mo → ~150 Ko pour
+  5 000 fichiers) ; statistiques agrégées en SQL.
+- Réconciliation retirée du chargement, devenue un bouton « Synchroniser le dossier ».
+- Présentation en tableau, navigateur de dossiers, actions repliées dans un menu.
+
+## [1.3.3] — 2026-07-08 — indexation accélérée
+- **Recouvrement CPU↔GPU** : préparation du fichier suivant pendant l'embedding du courant.
+- OCR des pages parallélisé (rendu abaissé à 150 dpi) et extraction de mots-clés
+  parallélisée (~×3,5 sur un document de plusieurs centaines de pages).
+- Arrêt souple d'un import et progression intra-fichier (étape + compteur).
+
+## [1.3.2] — 2026-07-07 — gestion de compte et inscription contrôlée
+- Page « Mon compte » (profil + changement de mot de passe) en libre-service.
+- Inscription au format `prenom.nom` avec validation dynamique et checklist du mot
+  de passe en direct ; bouton d'envoi désactivé tant que tout n'est pas conforme.
+
+## [1.3.1] — 2026-07-07 — mise en cache des résumés
+- Le résumé d'un document est enregistré à la première génération puis réutilisé
+  **instantanément** par tous : aucune puissance LLM dépensée deux fois.
+- Bouton « Régénérer » ; invalidation automatique à la ré-analyse ou à la suppression.
+
+## [1.3.0] — 2026-07-07 — sous-dossiers, page Documents repensée et résumé LLM
+- Documents identifiés par leur **chemin relatif** partout (registre, index, liens,
+  suppression) : les fichiers rangés en sous-dossiers deviennent consultables.
+- Page Documents : statistiques (fichiers, extraits, pages, taille) et répartitions
+  par statut et par stratégie ; arborescence repliable par sous-dossiers.
+- **Résumé d'un document** par le LLM à partir de ses extraits indexés.
+
+## [1.2.3] — 2026-07-07 — statistiques de fin d'import
+- Durée totale et taille indexée affichées à la fin d'un import.
+
+## [1.2.2] — 2026-07-07 — OCR automatique en repli
+- En stratégie « rapide », toute page PDF sans couche texte exploitable bascule
+  automatiquement sur l'**OCR** (PDF entièrement scanné ou mixte, page par page) ;
+  le registre affiche « fast (OCR auto) » pour distinguer ces documents.
+
+## [1.2.1] — 2026-07-07 — étapes de recherche animées et zone utilisateur
+- Affichage des étapes de recherche en direct avec chronométrage ; seul le temps
+  total est conservé sous la réponse.
+- Suppression groupée des conversations par base, avec confirmation et audit.
+
 ## [1.2.0] — 2026-07-06 — stabilité, gestion documentaire & performances
 
 ### Corrigé
