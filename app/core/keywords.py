@@ -1,9 +1,6 @@
 """Extraction de mots-clés des chunks (tagging — évolution v2).
 
-Approche hybride :
-  - défaut : extraction légère **locale et déterministe** via YAKE (offline) ;
-  - option par base : enrichissement par le LLM local (résumé + mots-clés), bien
-    plus lent (1 appel LLM/chunk) — branché à la brique génération.
+Extraction légère **locale et déterministe** via YAKE (offline).
 
 Les mots-clés sont stockés en métadonnées ET injectés dans le texte vectorisé
 (dense) et indexé (BM25) pour densifier le sens et améliorer le rappel lexical.

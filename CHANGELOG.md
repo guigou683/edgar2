@@ -11,8 +11,16 @@ et l'outillage de déploiement/synchronisation associé.
 > Ces résumés sont un point de départ — à ajuster librement selon les besoins.
 
 ## [À venir]
-- Enrichissement LLM des mots-clés à l'ingestion (option par base), viewer PDF inline
-  plus poussé, optimisations mémoire/VRAM.
+- Viewer PDF inline plus poussé, optimisations mémoire/VRAM.
+
+## [2.0.1] — 2026-07-23 — nettoyage
+
+### Retiré
+- Option **« Enrichissement LLM des mots-clés »** : l'interface (case à la création de
+  base, colonne du tableau de bord) et le stockage par base existaient, mais la logique
+  n'était **pas branchée** dans l'ingestion — les mots-clés restaient produits par YAKE
+  dans tous les cas. Retrait de cette amorce non fonctionnelle pour lever toute ambiguïté ;
+  elle pourra être réintroduite le jour où l'enrichissement sera réellement implémenté.
 
 ## [2.0.0] — 2026-07-16 — hors-ligne validé, console d'exploitation & durcissement
 

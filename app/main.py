@@ -960,7 +960,7 @@ async def admin_bases(request: Request):
 @app.post("/admin/bases/create")
 async def admin_bases_create(
     request: Request, name: str = Form(...), description: str = Form(""),
-    parse_strategy: str = Form("fast"), llm_enrichment: str = Form(""),
+    parse_strategy: str = Form("fast"),
     csrf_token: str = Form(...),
 ):
     user, resp = _guard(request, auth.ROLE_ADMIN)
@@ -968,7 +968,7 @@ async def admin_bases_create(
         return resp
     if _check_csrf(request, csrf_token) and name.strip():
         try:
-            bases.create_base(name, description, parse_strategy, llm_enrichment == "on")
+            bases.create_base(name, description, parse_strategy)
             db.insert_audit("base_create", user["id"], user["username"],
                             client_ip(request), _ua(request), name.strip())
         except Exception:

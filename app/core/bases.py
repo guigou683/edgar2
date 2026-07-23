@@ -82,8 +82,7 @@ def _unique_id(name: str, existing: set[str]) -> str:
 # --------------------------------------------------------------------------
 # Création / mise à jour / suppression
 # --------------------------------------------------------------------------
-def create_base(name: str, description: str = "", parse_strategy: str = PARSE_FAST,
-                llm_enrichment: bool = False) -> dict[str, Any]:
+def create_base(name: str, description: str = "", parse_strategy: str = PARSE_FAST) -> dict[str, Any]:
     """Crée une base : entrée de registre + dossier documents + collection Qdrant."""
     name = name.strip()
     if not name:
@@ -108,7 +107,6 @@ def create_base(name: str, description: str = "", parse_strategy: str = PARSE_FA
         "collection": vectorstore.collection_name(base_id),
         "docs_dir": str(Path("documents") / base_id),
         "parse_strategy": parse_strategy,
-        "llm_enrichment": bool(llm_enrichment),
         "created_at": _now(),
     }
     bases.append(base)
@@ -118,7 +116,7 @@ def create_base(name: str, description: str = "", parse_strategy: str = PARSE_FA
 
 def update_base(base_id: str, **changes: Any) -> Optional[dict[str, Any]]:
     """Met à jour les champs réglables d'une base (description, parsing, enrichissement)."""
-    allowed = {"description", "parse_strategy", "llm_enrichment", "name"}
+    allowed = {"description", "parse_strategy", "name"}
     bases = load_bases()
     updated = None
     for b in bases:
