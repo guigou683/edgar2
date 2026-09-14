@@ -1,4 +1,4 @@
-"""Crée une base de démonstration et y indexe un mini-corpus (français, Marine).
+"""Crée une base de démonstration et y indexe un mini-corpus (français).
 
 Idempotent : ne fait rien si une base nommée « Démonstration » existe déjà.
 À lancer dans le conteneur app (Ollama bge-m3 + Qdrant requis) :
@@ -22,33 +22,32 @@ from core.config import settings  # noqa: E402
 BASE_NAME = "Démonstration"
 
 DOCS = {
-    "fremm.md": (
-        "# Frégate multi-missions (FREMM)\n\n"
-        "La frégate multi-missions FREMM est un navire de combat de la Marine "
-        "nationale française. Elle est conçue pour la lutte anti-sous-marine, la "
-        "défense aérienne et la frappe vers la terre.\n\n"
-        "## Armement\n\n"
-        "La FREMM met en œuvre des missiles de croisière navals (MdCN), des "
-        "missiles surface-air Aster, ainsi qu'une torpille MU90 pour la lutte "
-        "anti-sous-marine.\n"
+    "onduleur.md": (
+        "# Onduleur (alimentation sans interruption)\n\n"
+        "Un onduleur protège les équipements sensibles contre les coupures et les "
+        "micro-variations du réseau électrique. Il bascule sur batterie en quelques "
+        "millisecondes lors d'une perte de secteur.\n\n"
+        "## Maintenance\n\n"
+        "Les batteries se remplacent en moyenne tous les trois à cinq ans. Un test "
+        "de décharge périodique vérifie l'autonomie réelle restante.\n"
     ),
-    "sonar.md": (
-        "# Lutte anti-sous-marine\n\n"
-        "La détection des sous-marins repose sur des capteurs acoustiques. Le "
-        "sonar remorqué à très basse fréquence permet une détection à grande "
-        "distance en analysant les signaux acoustiques sous-marins.\n\n"
-        "## Hélicoptère embarqué\n\n"
-        "L'hélicoptère NH90 Caïman participe à la lutte anti-sous-marine en "
-        "déployant des bouées acoustiques et une torpille légère.\n"
+    "climatisation.md": (
+        "# Climatisation d'une salle technique\n\n"
+        "La climatisation maintient une température et une hygrométrie stables afin "
+        "de préserver la fiabilité des équipements. Une redondance N+1 évite l'arrêt "
+        "en cas de panne d'une unité.\n\n"
+        "## Surveillance\n\n"
+        "Des sondes réparties dans la salle déclenchent une alerte lorsqu'un seuil "
+        "de température est dépassé, avant que le matériel ne soit affecté.\n"
     ),
-    "porte-avions.md": (
-        "# Porte-avions Charles de Gaulle\n\n"
-        "Le porte-avions Charles de Gaulle est le bâtiment amiral de la Marine "
-        "nationale. À propulsion nucléaire, il assure la projection de puissance "
-        "aérienne depuis la mer.\n\n"
-        "## Groupe aérien embarqué\n\n"
-        "Le groupe aérien comprend des avions de chasse Rafale Marine, un avion "
-        "de guet aérien E-2C Hawkeye et des hélicoptères.\n"
+    "sauvegarde.md": (
+        "# Politique de sauvegarde\n\n"
+        "La règle 3-2-1 recommande trois copies des données, sur deux supports "
+        "différents, dont une copie hors site. Elle limite le risque de perte en "
+        "cas d'incident matériel.\n\n"
+        "## Restauration\n\n"
+        "Un test de restauration régulier garantit que les sauvegardes sont "
+        "exploitables : une sauvegarde jamais restaurée n'a pas de valeur prouvée.\n"
     ),
 }
 
@@ -60,7 +59,7 @@ def main() -> int:
             return 0
 
     base = bases.create_base(BASE_NAME, "Mini-corpus de démonstration",
-                             parse_strategy="fast", llm_enrichment=False)
+                             parse_strategy="fast")
     docs_dir = settings.DOCUMENTS_DIR / base["id"]
     docs_dir.mkdir(parents=True, exist_ok=True)
 

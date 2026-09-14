@@ -29,7 +29,7 @@ outillage de déploiement et de synchronisation, et correctifs issus du premier 
 
 ### Ajouté
 - **Console d'exploitation** (`tools/edgar_ops/`, Tkinter, sans `sudo`) : **installation**
-  assistée d'un poste et **synchronisation terre↔mer** (bases, documents, index Qdrant,
+  assistée d'un poste et **synchronisation hors-ligne entre postes** (bases, documents, index Qdrant,
   modèles) depuis un disque. Les **comptes restent locaux** (jamais transférés) ; l'archive
   de code exclut `.env`. Remplace `scripts/edgar_sync.sh`. Dépendance : `python3-tk`.
 - **Mention de classification** : bandeau permanent (barre de gauche, toutes les pages) —
@@ -58,8 +58,8 @@ outillage de déploiement et de synchronisation, et correctifs issus du premier 
   sur Docker Linux natif, le défaut faisait échouer le démarrage (« Too many open
   files ») avec des collections volumineuses.
 
-## [1.3.13] — 2026-07-13 — synchronisation terre ↔ mer
-- Script interactif unique : rôle du poste (terre = export, mer = import), puis choix
+## [1.3.13] — 2026-07-13 — synchronisation hors-ligne entre postes
+- Script interactif unique : rôle du poste (source = export, cible = import), puis choix
   des paquets — code + images Docker, modèles Ollama (export par manifeste et blobs),
   données par base.
 - Transfert des collections Qdrant par **copie du dossier de stockage**, Qdrant arrêté

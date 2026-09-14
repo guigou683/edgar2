@@ -13,7 +13,7 @@ if [ ! -f "$CRT" ] || [ ! -f "$KEY" ]; then
     echo "[edgar] Génération d'un certificat auto-signé (CN=$CN, SAN=$SAN)…"
     openssl req -x509 -nodes -newkey rsa:2048 -days 3650 \
         -keyout "$KEY" -out "$CRT" \
-        -subj "/C=FR/O=Marine nationale/CN=$CN" \
+        -subj "/C=FR/O=EDGAR/CN=$CN" \
         -addext "subjectAltName=$SAN"
     chmod 600 "$KEY"
 fi

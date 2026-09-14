@@ -37,13 +37,13 @@ from core import bases, ingest, llm, vectorstore
 bid = None
 try:
     bid = bases.create_base("Verif hors-ligne", "verif", parse_strategy="fast")["id"]
-    docs = ["Le sonar remorqué permet la détection des sous-marins.",
-            "La frégate FREMM assure la lutte anti-sous-marine de la Marine nationale."]
+    docs = ["La maintenance préventive prolonge la durée de vie des équipements.",
+            "Le contrôle périodique des installations garantit leur bon fonctionnement."]
     chunks = [ingest.Chunk(text=t, file="c.txt", page=1, section=f"§{i}")
               for i, t in enumerate(docs)]
     rep = ingest.index_chunks(bid, ingest.file_hash("\n".join(docs).encode()), chunks)
     assert rep["indexed"] == 2, "indexation KO"
-    qvec = llm.embed_query("comment détecter un sous-marin ?")
+    qvec = llm.embed_query("comment prolonger la durée de vie des équipements ?")
     res = vectorstore.hybrid_search(bid, dense_vec=qvec, limit=2)
     assert res and "sonar" in " ".join(r["payload"]["text"].lower() for r in res), "recherche KO"
     print("  OK : ingestion + embeddings + recherche hybride, sans egress Internet.")

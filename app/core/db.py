@@ -532,7 +532,7 @@ def get_document_summary(base_id: str, filename: str,
 
 
 def list_document_summaries(base_id: str) -> list[dict[str, Any]]:
-    """Tous les résumés d'une base (tous types) — pour la synchro terre↔mer."""
+    """Tous les résumés d'une base (tous types) — pour la synchronisation hors-ligne."""
     with get_conn() as conn:
         rows = conn.execute(
             "SELECT * FROM document_summaries WHERE base_id = ?", (base_id,)).fetchall()

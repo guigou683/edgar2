@@ -51,8 +51,8 @@ Quatre services conteneurisés (Docker Compose) :
   **Sources** dépliable, **aperçu PDF** positionné sur la page citée, téléchargement ;
   historique par base et **conversations renommables**.
 - **Multi-bases** cloisonnées (un « chatbot » par base), stratégie de parsing par base.
-- **Mention de classification** : bandeau permanent dans la barre latérale
-  (**Non protégé** par défaut, **Diffusion Restreinte** ou **Secret**, option *Special France*).
+- **Mention de classification** : bandeau permanent et paramétrable rappelant le
+  niveau de confidentialité d'une base.
 - **Panneau de réglages** (⚙️) par session : préréglages **⚡ Rapide / 🎯 Précis** et
   leviers fins (mode hybride/IA/lexicale, re-prompt, reranking, top-k, seuil, etc.),
   avec info-bulles ; défauts globaux réglables par l'admin.
@@ -145,8 +145,9 @@ sur un réseau interne **sans aucune sortie Internet**.
 
 Une **application graphique** (Tkinter, `bash tools/edgar_ops/run.sh`) assiste, sur le
 poste, la **mise en service** (chargement des images/modèles, `.env`, certificat,
-compte admin) et la **synchronisation terre ↔ mer** (bases, documents, index Qdrant,
-modèles). Elle pilote Docker **sans `sudo`** et **ne touche jamais aux comptes** :
+compte admin) et la **synchronisation hors-ligne entre postes** (bases, documents,
+index Qdrant, modèles). Elle pilote Docker **sans `sudo`** et **ne touche jamais aux
+comptes** :
 ceux-ci restent propres à chaque poste. Dépendance : `python3-tk`.
 
 ---
@@ -174,15 +175,15 @@ edgar2/
                               #   vectorstore, sparse, keywords, rerank, llm, retrieval, rag
     templates/  static/       # Jinja2 + CSS/JS vanilla ; static/vendor/ = libs tierces versionnées
   scripts/                    # bootstrap admin, gen_cert, download_docker, export/verify offline, _sync
-  tools/edgar_ops/            # console Tkinter (hôte) : installation + synchro terre↔mer
+  tools/edgar_ops/            # console Tkinter (hôte) : installation + synchro hors-ligne
   CHANGELOG.md
 ```
 
 ---
 
-## Crédits
+## Crédits & usage
 
-Développé par **guigou6** et **CoewZelyr**
-— page « À propos » dans l'application.
+Développé par **guigou6** et **CoewZelyr**.
 
-© Marine nationale 2026 — Tous droits réservés.
+Dépôt fourni pour **consultation**. Toute réutilisation ou redéploiement est soumis
+à autorisation préalable.

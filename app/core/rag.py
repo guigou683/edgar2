@@ -18,7 +18,7 @@ from core import llm
 from core.retrieval import SearchParams, retrieve
 
 SYSTEM_PROMPT = (
-    "Tu es EDGAR, un assistant documentaire de la Marine nationale. "
+    "Tu es EDGAR, un assistant documentaire. "
     "Réponds en français, dans un registre clair et technique. "
     "Tu réponds UNIQUEMENT à partir des extraits numérotés fournis dans le contexte. "
     "Cite systématiquement tes sources avec leur numéro entre crochets, par exemple [1] ou [2]. "
@@ -98,7 +98,7 @@ def generate_answer(prompt: str, model: str | None = None) -> Iterator[str]:
 # Résumé d'un document (tous ses extraits indexés)
 # --------------------------------------------------------------------------
 SUMMARY_SYSTEM = (
-    "Tu es EDGAR, un assistant documentaire de la Marine nationale. "
+    "Tu es EDGAR, un assistant documentaire. "
     "Tu produis des synthèses fidèles, en français, uniquement à partir des extraits fournis. "
     "N'invente rien et n'ajoute aucune information absente des extraits."
 )

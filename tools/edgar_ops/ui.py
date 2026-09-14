@@ -54,7 +54,7 @@ class App(tk.Tk):
                   foreground="#555").pack(anchor="w", pady=(2, 20))
         ttk.Button(f, text="🛠  Installer un poste", width=32,
                    command=self._show_install).pack(anchor="w", pady=6)
-        ttk.Button(f, text="🔄  Synchroniser (terre ↔ mer)", width=32,
+        ttk.Button(f, text="🔄  Synchroniser (hors-ligne)", width=32,
                    command=self._show_sync).pack(anchor="w", pady=6)
 
     def _show_install(self) -> None:
@@ -202,7 +202,7 @@ class App(tk.Tk):
         top = ttk.Frame(self.container, padding=(12, 10))
         top.pack(fill="x")
         ttk.Button(top, text="← Accueil", command=self._show_home).pack(side="left")
-        ttk.Label(top, text="Synchronisation terre ↔ mer",
+        ttk.Label(top, text="Synchronisation hors-ligne",
                   font=("TkDefaultFont", 13, "bold")).pack(side="left", padx=12)
 
         # Journal + barre de progression (en bas), créés avant les onglets qui s'en servent.
