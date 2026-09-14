@@ -8,8 +8,6 @@ une par brique). Les versions **1.x** sont **stables** (1.0.0 = application comp
 initiale). La **2.0.0** acte le fonctionnement **hors-ligne validé en conditions réelles**
 et l'outillage de déploiement/synchronisation associé.
 
-> Ces résumés sont un point de départ — à ajuster librement selon les besoins.
-
 ## [À venir]
 - Viewer PDF inline plus poussé, optimisations mémoire/VRAM.
 
